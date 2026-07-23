@@ -21,6 +21,15 @@ web/dist/*
 # web/public/palworld-map.*
 # web/public/palworld-treemap.*
 
+# Real Palworld saves used for local debugging. These hold player names and
+# platform account IDs, and are far too big for the repo — the committed
+# fixtures in internal/palsave/testdata/ are synthetic instead.
+/localsaves/
+
+# Python bytecode from the save extractor
+__pycache__/
+*.pyc
+
 # Editor
 .vscode/
 .idea/

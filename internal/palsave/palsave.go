@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -85,6 +86,22 @@ func NewReader(dir string) (*Reader, error) {
 	return &Reader{scriptPath: scriptPath, cache: make(map[string]cacheEntry)}, nil
 }
 
+// tailLines trims a captured stderr to its last max bytes, on a line
+// boundary. The tail, not the head: a Python traceback puts the actual
+// exception on its final line, so truncating from the front throws away
+// the only part that says what went wrong.
+func tailLines(s string, max int) string {
+	s = strings.TrimRight(s, "\n")
+	if len(s) <= max {
+		return s
+	}
+	s = s[len(s)-max:]
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[i+1:]
+	}
+	return "...\n" + s
+}
+
 // savFile resolves a configured save path to the Level.sav inside it,
 // accepting either the directory that holds it or the file itself.
 func savFile(savePath string) (string, error) {
@@ -131,11 +148,7 @@ func (r *Reader) Read(ctx context.Context, savePath string) (*Result, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		msg := stderr.String()
-		if len(msg) > 500 {
-			msg = msg[:500]
-		}
-		return nil, fmt.Errorf("extractor failed: %w: %s", err, msg)
+		return nil, fmt.Errorf("extractor failed: %w: %s", err, tailLines(stderr.String(), 1200))
 	}
 
 	result := &Result{ParsedAt: time.Now().UTC(), SaveModTime: info.ModTime().UTC()}

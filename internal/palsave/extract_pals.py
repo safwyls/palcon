@@ -24,14 +24,52 @@ patches, so every field access below is defensive: a missing field degrades
 to a default rather than failing the whole extraction.
 """
 
+import contextlib
 import json
+import os
 import sys
 
 from palworld_save_tools.gvas import GvasFile
 from palworld_save_tools.palsav import decompress_sav_to_gvas
-from palworld_save_tools.paltypes import PALWORLD_CUSTOM_PROPERTIES, PALWORLD_TYPE_HINTS
+from palworld_save_tools.paltypes import PALWORLD_TYPE_HINTS
 
 ZERO_GUID = "00000000-0000-0000-0000-000000000000"
+
+CHARACTER_PATH = ".worldSaveData.CharacterSaveParameterMap.Value.RawData"
+
+
+def decode_character(reader, type_name, size, path):
+    """Decode one character blob, reading only as far as we actually need.
+
+    palworld-save-tools' own decoder reads the trailing fields after the
+    property tree (unknown bytes, group id, ...) and then asserts it landed
+    exactly on EOF. Newer saves append more trailing data, so that assertion
+    fires ("Warning: EOF not reached") and takes the whole extraction with
+    it — even though the pal data itself parsed perfectly.
+
+    We only ever read `object.SaveParameter`, and being read-only we never
+    have to re-encode the tail, so we stop once the property tree is out and
+    ignore whatever follows. Trailing-layout changes can't break us.
+    """
+    if type_name != "ArrayProperty":
+        raise Exception(f"expected ArrayProperty, got {type_name}")
+    value = reader.property(type_name, size, path, nested_caller_path=path)
+    inner = reader.internal_copy(bytes(value["value"]["values"]), debug=False)
+    value["value"] = {"object": inner.properties_until_end()}
+    return value
+
+
+def _unused_encode(*_args, **_kwargs):
+    raise NotImplementedError("palcon never writes save files")
+
+
+# Deliberately the *only* custom decoder we register. palworld-save-tools
+# ships decoders for group/guild data, item containers, foliage, base camps,
+# map objects and more; every one is both dead weight (we read none of them)
+# and a way for an unrelated format change to break the Pal viewer. Left
+# unregistered, those blobs stay unparsed byte arrays that nothing can choke
+# on, and a big world parses substantially faster.
+CUSTOM_PROPERTIES = {CHARACTER_PATH: (decode_character, _unused_encode)}
 
 
 def decompress_sav(raw):
@@ -76,6 +114,19 @@ def decompress_sav(raw):
     return ooz.decompress(body, uncompressed_len)
 
 
+def unwrap(val):
+    """Strip gvas value wrappers down to the scalar inside.
+
+    Property values nest to different depths by type — a ByteProperty holds
+    {"value": {"type": ..., "value": 5}} where an IntProperty holds
+    {"value": 5} — so unwrap until there's no wrapper left rather than
+    assuming a fixed depth.
+    """
+    while isinstance(val, dict) and "value" in val:
+        val = val["value"]
+    return val
+
+
 def v(node, *path, default=None):
     """Walk nested gvas property dicts, unwrapping {"value": ...} at each step."""
     cur = node
@@ -90,30 +141,85 @@ def v(node, *path, default=None):
     return cur
 
 
+def num(node, *path, default=0):
+    val = unwrap(v(node, *path, default=None))
+    return val if isinstance(val, (int, float)) and not isinstance(val, bool) else default
+
+
+def text(node, *path, default=""):
+    val = unwrap(v(node, *path, default=None))
+    return val if isinstance(val, str) else default
+
+
 def container_id(node, *path):
     """A container reference is a struct holding a single guid at .ID."""
-    raw = v(node, *path, "ID", default=None)
+    raw = unwrap(v(node, *path, "ID", default=None))
     return str(raw) if raw is not None else None
 
 
 def parse_pal(param, instance_id):
-    char_id = v(param, "CharacterID", default="") or ""
-    gender_raw = v(param, "Gender", default="") or ""
+    char_id = text(param, "CharacterID")
+    gender = text(param, "Gender")
     passives = v(param, "PassiveSkillList", "values", default=None) or []
     return {
         "instanceId": instance_id,
         "characterId": char_id,
-        "nickname": v(param, "NickName", default="") or "",
-        "level": v(param, "Level", default=1) or 1,
-        "gender": "female" if "Female" in str(gender_raw) else ("male" if "Male" in str(gender_raw) else ""),
+        "nickname": text(param, "NickName"),
+        "level": num(param, "Level", default=1) or 1,
+        "gender": "female" if "Female" in gender else ("male" if "Male" in gender else ""),
         "isBoss": char_id.upper().startswith("BOSS_"),
-        "isLucky": bool(v(param, "IsRarePal", default=False)),
-        "rank": v(param, "Rank", default=1) or 1,
-        "talentHp": v(param, "Talent_HP", default=0) or 0,
-        "talentShot": v(param, "Talent_Shot", default=0) or 0,
-        "talentDefense": v(param, "Talent_Defense", default=0) or 0,
+        "isLucky": bool(unwrap(v(param, "IsRarePal", default=False))),
+        "rank": num(param, "Rank", default=1) or 1,
+        "talentHp": num(param, "Talent_HP"),
+        "talentShot": num(param, "Talent_Shot"),
+        "talentDefense": num(param, "Talent_Defense"),
         "passives": [str(p) for p in passives],
     }
+
+
+def read_gvas(path, custom_properties):
+    """Parse one .sav file. Library progress/warning chatter goes to stderr:
+    it prints to stdout by default, which would corrupt the JSON we emit."""
+    with open(path, "rb") as f:
+        raw = f.read()
+    with contextlib.redirect_stdout(sys.stderr):
+        return GvasFile.read(
+            decompress_sav(raw), PALWORLD_TYPE_HINTS, custom_properties, allow_nan=True
+        )
+
+
+def player_containers_from_dir(players_dir):
+    """Map each player's pal containers from Players/<uid>.sav.
+
+    Newer saves moved OtomoCharacterContainerId (party) and
+    PalStorageContainerId (palbox) out of the character entry and into
+    per-player files, and dropped OwnerPlayerUId from pals entirely — so
+    a pal's owner is now established by which container holds it.
+
+    Returns {container_guid: (player_uid, bucket)}.
+    """
+    index = {}
+    if not os.path.isdir(players_dir):
+        return index
+    for name in sorted(os.listdir(players_dir)):
+        if not name.lower().endswith(".sav"):
+            continue
+        try:
+            save_data = read_gvas(os.path.join(players_dir, name), {}).properties["SaveData"]["value"]
+        except Exception as exc:  # one unreadable player shouldn't sink the rest
+            print(f"warning: skipping {name}: {exc}", file=sys.stderr)
+            continue
+        uid = str(unwrap(save_data.get("PlayerUId")) or "")
+        if not uid:
+            continue
+        for key, bucket in (
+            ("OtomoCharacterContainerId", "party"),
+            ("PalStorageContainerId", "palbox"),
+        ):
+            cid = container_id(save_data, key)
+            if cid:
+                index[cid] = (uid, bucket)
+    return index
 
 
 def main():
@@ -121,55 +227,74 @@ def main():
         print("usage: extract_pals.py <Level.sav>", file=sys.stderr)
         return 2
 
-    with open(sys.argv[1], "rb") as f:
-        raw = f.read()
-    gvas_data = decompress_sav(raw)
-    gvas = GvasFile.read(gvas_data, PALWORLD_TYPE_HINTS, PALWORLD_CUSTOM_PROPERTIES, allow_nan=True)
+    level_path = sys.argv[1]
+    if os.path.isdir(level_path):
+        level_path = os.path.join(level_path, "Level.sav")
 
+    # container guid -> (player uid, "party" | "palbox")
+    containers = player_containers_from_dir(os.path.join(os.path.dirname(level_path), "Players"))
+
+    gvas = read_gvas(level_path, CUSTOM_PROPERTIES)
     world = gvas.properties.get("worldSaveData", {}).get("value", {})
     char_map = world.get("CharacterSaveParameterMap", {}).get("value", [])
 
-    players = {}  # uid -> player record + container ids
-    pals = []     # (owner_uid, container_id, pal)
+    players = {}  # uid -> record
+    pals = []     # (container_guid, old_owner_uids, pal)
+
+    def record_for(uid):
+        return players.setdefault(
+            uid,
+            {"uid": uid, "nickname": "", "level": 1, "party": [], "palbox": [], "base": []},
+        )
 
     for entry in char_map:
         key = entry.get("key", {})
-        uid = str(v(key, "PlayerUId", default=ZERO_GUID) or ZERO_GUID)
-        instance_id = str(v(key, "InstanceId", default="") or "")
+        uid = str(unwrap(v(key, "PlayerUId", default=ZERO_GUID)) or ZERO_GUID)
+        instance_id = str(unwrap(v(key, "InstanceId", default="")) or "")
         param = v(entry.get("value", {}), "RawData", "object", "SaveParameter", default=None)
         if not isinstance(param, dict):
             continue
 
-        if v(param, "IsPlayer", default=False):
-            players[uid] = {
-                "record": {
-                    "uid": uid,
-                    "nickname": v(param, "NickName", default="") or "",
-                    "level": v(param, "Level", default=1) or 1,
-                    "party": [],
-                    "palbox": [],
-                    "base": [],
-                },
-                "party_container": container_id(param, "OtomoCharacterContainerId"),
-                "palbox_container": container_id(param, "PalStorageContainerId"),
-            }
+        if unwrap(v(param, "IsPlayer", default=False)):
+            rec = record_for(uid)
+            rec["nickname"] = text(param, "NickName")
+            rec["level"] = num(param, "Level", default=1) or 1
+            # Older saves keep the player's containers on the character entry
+            # itself; newer ones only in Players/<uid>.sav (already indexed).
+            for prop, bucket in (
+                ("OtomoCharacterContainerId", "party"),
+                ("PalStorageContainerId", "palbox"),
+            ):
+                cid = container_id(param, prop)
+                if cid:
+                    containers.setdefault(cid, (uid, bucket))
         else:
-            owner = str(v(param, "OwnerPlayerUId", default="") or "")
-            slot_container = container_id(param, "SlotId", "ContainerId") or container_id(param, "SlotID", "ContainerId")
-            pals.append((owner, slot_container, parse_pal(param, instance_id)))
+            cid = container_id(param, "SlotId", "ContainerId") or container_id(param, "SlotID", "ContainerId")
+            # OwnerPlayerUId was dropped in newer saves; OldOwnerPlayerUIds is
+            # what remains to attribute a pal sitting in a base container.
+            old_owners = [
+                str(o) for o in (v(param, "OldOwnerPlayerUIds", "values", default=None) or [])
+            ]
+            owner = str(unwrap(v(param, "OwnerPlayerUId", default="")) or "")
+            if owner:
+                old_owners.insert(0, owner)
+            pals.append((cid, old_owners, parse_pal(param, instance_id)))
 
-    for owner, slot_container, pal in pals:
-        p = players.get(owner)
-        if p is None:
-            continue  # unowned (wild/dungeon) — out of scope
-        if slot_container is not None and slot_container == p["party_container"]:
-            p["record"]["party"].append(pal)
-        elif slot_container is not None and slot_container == p["palbox_container"]:
-            p["record"]["palbox"].append(pal)
-        else:
-            p["record"]["base"].append(pal)
+    for cid, old_owners, pal in pals:
+        owner_bucket = containers.get(cid) if cid else None
+        if owner_bucket is not None:
+            uid, bucket = owner_bucket
+            record_for(uid)[bucket].append(pal)
+            continue
+        # Not in anyone's party or palbox: it's working at a base (or was
+        # otherwise released from a container). Attribute it to its most
+        # recent owner if we know one; a pal with no owner at all is wild.
+        for uid in old_owners:
+            if uid and uid != ZERO_GUID:
+                record_for(uid)["base"].append(pal)
+                break
 
-    out = {"players": sorted((p["record"] for p in players.values()), key=lambda r: r["nickname"].lower())}
+    out = {"players": sorted(players.values(), key=lambda r: (r["nickname"].lower(), r["uid"]))}
     json.dump(out, sys.stdout, separators=(",", ":"))
     return 0
 

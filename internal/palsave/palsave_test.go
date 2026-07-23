@@ -58,6 +58,11 @@ func TestRead(t *testing.T) {
 	}{
 		{name: "PlZ/zlib via directory", path: "testdata"},
 		{name: "PlM/oodle via file", path: "testdata/Level_oodle.sav", needsOodle: true},
+		// 0.6-era layout: pals carry no OwnerPlayerUId and players keep their
+		// container ids in Players/<uid>.sav, so ownership resolves by
+		// container. Produced zero pals for every player before that was
+		// handled — hence a fixture rather than trusting the old one.
+		{name: "container-based ownership", path: "testdata/newlayout"},
 	}
 
 	for _, tc := range tests {

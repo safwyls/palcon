@@ -90,7 +90,7 @@ function PlayerSection({ player }: { player: PlayerPals }) {
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-display text-base font-bold">{player.nickname || player.uid}</h2>
           <p className="font-mono text-xs text-ink/40">
-            Lv.{player.level} · {total} pals
+            Lv.{player.level} · {total} {total === 1 ? "pal" : "pals"}
           </p>
         </div>
       </div>
