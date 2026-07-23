@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { TransformWrapper, TransformComponent, KeepScale, useControls } from "react-zoom-pan-pinch";
+import {
+  TransformWrapper,
+  TransformComponent,
+  KeepScale,
+  useControls,
+  useTransformContext,
+  useTransformInit,
+} from "react-zoom-pan-pinch";
 import { ZoomIn, ZoomOut, Maximize } from "lucide-react";
 import type { Player } from "../lib/api";
 import { MAP_AREAS, mapOf, worldToMapPercent, type MapArea } from "../lib/map";
@@ -59,6 +66,34 @@ function FocusOnPlayer({
   return null;
 }
 
+// The library's centerOnInit measures the wrapper exactly once, via a
+// one-shot ResizeObserver that disconnects after its first layout change —
+// so if the surrounding layout settles later (nav panels mounting, fonts,
+// a window resize), the content is left centered against a stale wrapper
+// size until the next gesture snaps it. This keeps a persistent observer
+// and re-centers while at fit zoom; when zoomed in, a recenter would yank
+// the view around, so the library's own bounds clamping on the next
+// gesture is left to handle it.
+function KeepCenteredOnResize() {
+  const context = useTransformContext();
+  const { centerView } = useControls();
+
+  // useTransformInit (not a plain effect): wrapperComponent is only
+  // assigned once the library finishes initializing, which is after this
+  // component's own mount effect would have run and found null.
+  useTransformInit(() => {
+    const wrapper = context.wrapperComponent;
+    if (!wrapper) return;
+    const ro = new ResizeObserver(() => {
+      if (context.state.scale <= 1.001) centerView(1, 0);
+    });
+    ro.observe(wrapper);
+    return () => ro.disconnect();
+  });
+
+  return null;
+}
+
 // Backing resolution of the texture canvas. The source images are 8192x8192,
 // but rendered via <img> Chromium re-decodes the full webp (~300-450ms,
 // blocking) every time the zoom crosses into a draw scale whose downscaled
@@ -72,20 +107,19 @@ function FocusOnPlayer({
 const TEXTURE_SIZE = 4096;
 
 /**
- * The square zoomable map canvas: texture, pins, zoom controls. Selection
- * state lives in the page (ServerMap) so the HUD and player list stay in
- * sync with it; this component only reports clicks up via onSelect.
+ * The zoomable map: texture, pins, zoom controls. Selection state lives in
+ * the page (ServerMap) so the HUD and player list stay in sync with it;
+ * this component only reports clicks up via onSelect.
  *
- * Must stay square: player positions are percentages of the 8192x8192
- * texture, so a non-square box would crop the image asymmetrically while
- * the percentage math stayed naive to it, drifting every pin.
- *
- * "Square" here means min(region width, region height) — sized via container
- * query units against the parent (which must set container-type: size).
- * The previous `aspect-square h-full max-w-full` approach silently broke in
- * portrait regions: h-full is an explicit height, so when max-w-full capped
- * the width the aspect-ratio could no longer shrink the height to match,
- * leaving a tall non-square box and vertically-drifted pins on mobile.
+ * The component root — the zoom viewport — fills whatever region it's given
+ * at any aspect ratio. Only the CONTENT inside the transform must stay
+ * square: player positions are percentages of the square 8192x8192 texture,
+ * so a non-square content box would crop the image asymmetrically while the
+ * percentage math stayed naive to it, drifting every pin. The content square
+ * is sized min(100cqw,100cqh) against the root (container-type: size) —
+ * beware "aspect-square h-full max-w-full" here: an explicit h-full stops
+ * aspect-ratio from shrinking the height once max-w-full caps the width,
+ * which silently produced a non-square box in portrait regions.
  */
 export function PlayerMap({
   players,
@@ -153,19 +187,25 @@ export function PlayerMap({
   const playersHere = players.filter((p) => mapOf(p.location_x, p.location_y) === area);
 
   return (
-    <div className={cn("relative h-[min(100cqw,100cqh)] w-[min(100cqw,100cqh)] overflow-hidden", className)}>
+    <div className={cn("relative h-full w-full overflow-hidden [container-type:size]", className)}>
       <TransformWrapper
         key={area}
         minScale={1}
         maxScale={MAX_SCALE}
         initialScale={1}
         centerOnInit
+        // Whenever the square content is smaller than the viewport in an
+        // axis (e.g. horizontally at 1x on a wide screen), pin it centered
+        // in that axis instead of letting it be dragged around the empty
+        // space; panning behaves normally once zoomed past the fit size.
+        centerZoomedOut
         doubleClick={{ mode: "zoomIn" }}
         panning={{ velocityDisabled: true }}
       >
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
             <FocusOnPlayer focusId={focusId} settleSignal={settleSignal} onDone={onFocusDone} />
+            <KeepCenteredOnResize />
 
             <div className="absolute bottom-2 right-2 z-10 flex flex-col gap-1">
               <Button variant="secondary" size="icon" className="h-7 w-7" title="Zoom in" onClick={() => zoomIn()}>
@@ -185,9 +225,15 @@ export function PlayerMap({
               </Button>
             </div>
 
-            <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full">
+            <TransformComponent wrapperClass="!w-full !h-full">
+              {/* The CONTENT square: pins are percentage-positioned against
+                  this box, so it must stay square — but the zoom viewport
+                  around it fills the whole region at any aspect ratio, so
+                  zooming in uses every pixel of a wide (or tall) screen
+                  instead of staying letterboxed to the square. Sized by
+                  container query against the component root. */}
               <div
-                className="relative h-full w-full"
+                className="relative h-[min(100cqw,100cqh)] w-[min(100cqw,100cqh)]"
                 style={
                   !hasBackground
                     ? {

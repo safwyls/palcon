@@ -105,8 +105,7 @@ export function ServerMap() {
     <div className="flex h-full overflow-hidden">
       {/* Map region: dark ocean surround, square canvas centered inside. */}
       <div className="relative min-w-0 flex-1 overflow-hidden bg-[#14333E]">
-        {/* container-type feeds the cqw/cqh units PlayerMap sizes its square by */}
-        <div className="absolute inset-0 flex items-center justify-center [container-type:size]">
+        <div className="absolute inset-0">
           <PlayerMap
             players={players}
             area={area}
