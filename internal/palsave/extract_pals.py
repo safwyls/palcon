@@ -29,7 +29,8 @@ import json
 import os
 import sys
 
-from palworld_save_tools.gvas import GvasFile
+from palworld_save_tools.archive import FArchiveReader
+from palworld_save_tools.gvas import GvasFile, GvasHeader
 from palworld_save_tools.palsav import decompress_sav_to_gvas
 from palworld_save_tools.paltypes import PALWORLD_TYPE_HINTS
 
@@ -177,9 +178,85 @@ def parse_pal(param, instance_id):
     }
 
 
+def skip_property(reader, type_name, size):
+    """Seek past a property we don't need.
+
+    `size` counts only the payload, not the per-type header that precedes
+    it (an IntProperty writes a guid flag but reports size 4), so the
+    header has to be consumed before the skip. Layouts mirror
+    FArchiveWriter.property_inner.
+    """
+    if type_name == "StructProperty":
+        reader.fstring()  # struct type
+        reader.guid()
+        reader.optional_guid()
+    elif type_name == "ArrayProperty":
+        reader.fstring()  # element type
+        reader.optional_guid()
+    elif type_name == "MapProperty":
+        reader.fstring()  # key type
+        reader.fstring()  # value type
+        reader.optional_guid()
+    elif type_name in ("EnumProperty", "ByteProperty"):
+        reader.fstring()  # enum / byte subtype
+        reader.optional_guid()
+    elif type_name == "BoolProperty":
+        # The value lives in the header and size is 0.
+        reader.bool()
+        reader.optional_guid()
+    else:
+        reader.optional_guid()
+    reader.skip(size)
+
+
+def read_character_entries(gvas_data):
+    """Pull CharacterSaveParameterMap out of Level.sav, skipping everything else.
+
+    A world save holds ~22 sections, and the ones we never look at —
+    foliage instances, every placed structure, every container slot — are
+    the enormous ones. Parsing them costs minutes and gigabytes on an
+    established world (byte arrays deserialize into Python lists of ints),
+    purely to be discarded. Properties are length-prefixed, so we walk the
+    top level and seek past anything that isn't the character map, and
+    stop reading the moment we have it.
+    """
+    with FArchiveReader(
+        gvas_data, PALWORLD_TYPE_HINTS, CUSTOM_PROPERTIES, allow_nan=True
+    ) as reader:
+        GvasHeader.read(reader)
+        while True:
+            name = reader.fstring()
+            if name == "None":
+                break
+            type_name = reader.fstring()
+            size = reader.u64()
+            if name != "worldSaveData" or type_name != "StructProperty":
+                skip_property(reader, type_name, size)
+                continue
+
+            # Descend into worldSaveData rather than skipping it.
+            reader.fstring()
+            reader.guid()
+            reader.optional_guid()
+            while True:
+                inner = reader.fstring()
+                if inner == "None":
+                    break
+                inner_type = reader.fstring()
+                inner_size = reader.u64()
+                if inner == "CharacterSaveParameterMap":
+                    prop = reader.property(
+                        inner_type, inner_size, ".worldSaveData.CharacterSaveParameterMap"
+                    )
+                    return prop.get("value", [])
+                skip_property(reader, inner_type, inner_size)
+            break
+    return []
+
+
 def read_gvas(path, custom_properties):
-    """Parse one .sav file. Library progress/warning chatter goes to stderr:
-    it prints to stdout by default, which would corrupt the JSON we emit."""
+    """Parse one .sav file whole. Library progress/warning chatter goes to
+    stderr: it prints to stdout by default, which would corrupt our JSON."""
     with open(path, "rb") as f:
         raw = f.read()
     with contextlib.redirect_stdout(sys.stderr):
@@ -234,9 +311,20 @@ def main():
     # container guid -> (player uid, "party" | "palbox")
     containers = player_containers_from_dir(os.path.join(os.path.dirname(level_path), "Players"))
 
-    gvas = read_gvas(level_path, CUSTOM_PROPERTIES)
-    world = gvas.properties.get("worldSaveData", {}).get("value", {})
-    char_map = world.get("CharacterSaveParameterMap", {}).get("value", [])
+    with open(level_path, "rb") as f:
+        gvas_data = decompress_sav(f.read())
+    try:
+        with contextlib.redirect_stdout(sys.stderr):
+            char_map = read_character_entries(gvas_data)
+    except Exception as exc:
+        # The targeted walk depends on save layout; if a future format
+        # shift breaks it, fall back to parsing everything rather than
+        # reporting no pals at all.
+        print(f"warning: fast path failed ({exc}); parsing whole save", file=sys.stderr)
+        with contextlib.redirect_stdout(sys.stderr):
+            gvas = GvasFile.read(gvas_data, PALWORLD_TYPE_HINTS, CUSTOM_PROPERTIES, allow_nan=True)
+        world = gvas.properties.get("worldSaveData", {}).get("value", {})
+        char_map = world.get("CharacterSaveParameterMap", {}).get("value", [])
 
     players = {}  # uid -> record
     pals = []     # (container_guid, old_owner_uids, pal)
