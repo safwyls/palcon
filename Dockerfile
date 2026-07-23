@@ -1,5 +1,5 @@
 # ---- frontend build ----
-FROM node:20-alpine AS frontend
+FROM node:24-alpine AS frontend
 WORKDIR /app/web
 COPY web/package.json web/package-lock.json* ./
 RUN npm install
@@ -31,6 +31,10 @@ WORKDIR /app
 COPY --from=backend /out/palcon ./palcon
 RUN mkdir -p /data && chown palcon:palcon /data
 USER palcon
+# The app otherwise defaults to ./data, which this non-root user can't
+# create — so an image run without DATA_DIR set died with a confusing
+# "permission denied" despite /data existing and being owned correctly.
+ENV DATA_DIR=/data
 VOLUME /data
 EXPOSE 8080
 ENTRYPOINT ["./palcon"]
