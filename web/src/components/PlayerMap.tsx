@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { TransformWrapper, TransformComponent, KeepScale, useControls } from "react-zoom-pan-pinch";
 import { ZoomIn, ZoomOut, Maximize, MapPin } from "lucide-react";
 import type { Player } from "../lib/api";
-import { MAP_AREAS, MAP_AREA_ORDER, DEFAULT_MAP_AREA, mapOf, worldToMapPercent, type MapArea } from "../lib/map";
+import { MAP_AREAS, mapOf, worldToMapPercent, type MapArea } from "../lib/map";
 import { cn } from "../lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Button } from "./ui/button";
@@ -57,8 +57,17 @@ function FocusOnPlayer({
   return null;
 }
 
-export function PlayerMap({ players, className }: { players: Player[]; className?: string }) {
-  const [area, setArea] = useState<MapArea>(DEFAULT_MAP_AREA);
+export function PlayerMap({
+  players,
+  area,
+  onAreaChange,
+  className,
+}: {
+  players: Player[];
+  area: MapArea;
+  onAreaChange: (area: MapArea) => void;
+  className?: string;
+}) {
   const [candidateIdx, setCandidateIdx] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -76,13 +85,13 @@ export function PlayerMap({ players, className }: { players: Player[]; className
   function selectPlayer(p: Player) {
     setSelectedId(p.playerId);
     const playerArea = mapOf(p.location_x, p.location_y);
-    if (playerArea !== area) setArea(playerArea);
+    if (playerArea !== area) onAreaChange(playerArea);
     setFocusId(p.playerId);
   }
 
   return (
-    <div className="flex h-full flex-col gap-3 rounded-lg border border-border bg-card p-3 shadow-sm lg:flex-row">
-      <div className="max-h-48 shrink-0 overflow-y-auto rounded-md border border-border lg:h-auto lg:w-72 lg:max-h-none">
+    <div className="flex h-full flex-col gap-3 lg:flex-row">
+      <div className="order-2 max-h-48 shrink-0 overflow-y-auto rounded-lg border border-border bg-card shadow-sm lg:order-1 lg:h-auto lg:w-96 lg:max-h-none">
         {players.length > 0 ? (
           <Table>
             <TableHeader>
@@ -90,6 +99,7 @@ export function PlayerMap({ players, className }: { players: Player[]; className
                 <TableHead className="px-2">Name</TableHead>
                 <TableHead className="px-2">Lvl</TableHead>
                 <TableHead className="px-2 text-right">Ping</TableHead>
+                <TableHead className="px-2 text-right">Coords</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -106,7 +116,7 @@ export function PlayerMap({ players, className }: { players: Player[]; className
                   >
                     <TableCell className="max-w-0 px-2 py-1.5 font-medium text-foreground">
                       <div className="flex items-center gap-1.5">
-                        <span className="truncate">{p.name}</span>
+                        <span className="truncate" title={p.name}>{p.name}</span>
                         {playerArea !== area && (
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -119,6 +129,9 @@ export function PlayerMap({ players, className }: { players: Player[]; className
                     </TableCell>
                     <TableCell className="px-2 py-1.5">{p.level}</TableCell>
                     <TableCell className="px-2 py-1.5 text-right">{Math.round(p.ping)}ms</TableCell>
+                    <TableCell className="whitespace-nowrap px-2 py-1.5 text-right font-mono text-xs text-muted-foreground">
+                      {Math.round(p.location_x)}, {Math.round(p.location_y)}
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -129,20 +142,10 @@ export function PlayerMap({ players, className }: { players: Player[]; className
         )}
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        {MAP_AREA_ORDER.length > 1 && (
-          <div className="flex items-center gap-1">
-            {MAP_AREA_ORDER.map((a) => (
-              <Button key={a} variant={a === area ? "secondary" : "ghost"} size="sm" onClick={() => setArea(a)}>
-                {MAP_AREAS[a].label}
-              </Button>
-            ))}
-          </div>
-        )}
-
+      <div className="order-1 min-w-0 flex-1 rounded-lg border border-border bg-card p-3 shadow-sm lg:order-2">
         <div
           className={cn(
-            "relative aspect-square w-full flex-1 min-h-0 overflow-hidden rounded-md border border-border bg-muted/20",
+            "relative aspect-square w-full h-full overflow-hidden rounded-md bg-muted/20",
             className,
           )}
         >

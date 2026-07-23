@@ -1,13 +1,17 @@
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { DEFAULT_MAP_AREA, type MapArea } from "../lib/map";
 import { PlayerMap } from "../components/PlayerMap";
+import { MapAreaToggle } from "../components/MapAreaToggle";
 import { ServerPageHeader } from "../components/ServerPageHeader";
 import { ServerUnreachable } from "../components/ServerUnreachable";
 
 export function ServerMap() {
   const { serverID } = useParams();
   const id = Number(serverID);
+  const [area, setArea] = useState<MapArea>(DEFAULT_MAP_AREA);
 
   const serverQuery = useQuery({ queryKey: ["server", id], queryFn: () => api.getServer(id) });
   const infoQuery = useQuery({ queryKey: ["server-info", id], queryFn: () => api.serverInfo(id), retry: false });
@@ -28,6 +32,7 @@ export function ServerMap() {
         server={server}
         statusText={infoQuery.data?.version ?? (infoQuery.isError ? "unreachable" : "checking...")}
         transport={infoQuery.data?.transport}
+        actions={!infoQuery.isError && <MapAreaToggle area={area} onChange={setArea} />}
       />
 
       {infoQuery.isError ? (
@@ -47,7 +52,12 @@ export function ServerMap() {
             // when that's the tighter constraint, and the aspect-ratio box
             // recomputes the other dimension to stay square either way.
             <div className="min-h-0 flex-1">
-              <PlayerMap players={playersQuery.data} className="mx-auto h-full w-auto max-w-full" />
+              <PlayerMap
+                players={playersQuery.data}
+                area={area}
+                onAreaChange={setArea}
+                className="mx-auto h-full w-auto max-w-full"
+              />
             </div>
           )}
         </>

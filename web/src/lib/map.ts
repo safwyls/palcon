@@ -39,6 +39,22 @@ export const MAP_AREAS: Record<MapArea, AreaBounds> = {
 export const MAP_AREA_ORDER: MapArea[] = ["MainMap", "Tree"];
 export const DEFAULT_MAP_AREA: MapArea = "MainMap";
 
+// The map textures are full 8192x8192 stitched world images — decoding one
+// is real, unavoidable CPU/GPU work (hundreds of ms), paid once per image
+// per session. If that decode is still in flight when the user's first
+// pan/zoom gesture lands (which it usually is, if it only starts once they
+// open the Map tab), the gesture visibly stutters right as the decode
+// finishes mid-drag. Kicking the fetch+decode off as early as the app shell
+// mounts — instead of only once PlayerMap itself renders the <img> — gives
+// it a head start so it's normally done well before the user gets there.
+export function preloadMapTextures() {
+  for (const area of Object.keys(MAP_AREAS) as MapArea[]) {
+    const img = new Image();
+    img.src = MAP_AREAS[area].textureCandidates[0];
+    img.decode?.().catch(() => {});
+  }
+}
+
 /** Native size of each square map texture, in pixels. */
 const MAP_SIZE = 8192;
 

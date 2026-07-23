@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { Outlet, useMatch } from "react-router-dom";
 import { cn } from "../lib/utils";
+import { preloadMapTextures } from "../lib/map";
 import { AppSidebar } from "./AppSidebar";
 
 /**
@@ -11,6 +13,10 @@ import { AppSidebar } from "./AppSidebar";
  */
 export function AppShell() {
   const onServerDetail = useMatch("/servers/:serverID/*") !== null;
+
+  useEffect(() => {
+    preloadMapTextures();
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
