@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { TransformWrapper, TransformComponent, KeepScale, useControls } from "react-zoom-pan-pinch";
-import { ZoomIn, ZoomOut, Maximize } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize, MapPin } from "lucide-react";
 import type { Player } from "../lib/api";
 import { MAP_AREAS, MAP_AREA_ORDER, DEFAULT_MAP_AREA, mapOf, worldToMapPercent, type MapArea } from "../lib/map";
 import { cn } from "../lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Button } from "./ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
 function markerId(playerId: string) {
   return `player-marker-${playerId}`;
@@ -80,29 +81,52 @@ export function PlayerMap({ players, className }: { players: Player[]; className
   }
 
   return (
-    <div className="flex h-full gap-3">
-      <div className="w-44 shrink-0 space-y-0.5 overflow-y-auto">
-        {players.map((p) => {
-          const playerArea = mapOf(p.location_x, p.location_y);
-          return (
-            <button
-              key={p.playerId}
-              onClick={() => selectPlayer(p)}
-              className={cn(
-                "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-                selectedId === p.playerId
-                  ? "bg-secondary text-foreground"
-                  : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
-              )}
-            >
-              <span className="truncate">{p.name}</span>
-              {playerArea !== area && (
-                <span className="shrink-0 text-xs text-muted-foreground/70">{MAP_AREAS[playerArea].label}</span>
-              )}
-            </button>
-          );
-        })}
-        {players.length === 0 && <p className="px-2 py-1.5 text-sm text-muted-foreground">No players online.</p>}
+    <div className="flex h-full flex-col gap-3 rounded-lg border border-border bg-card p-3 shadow-sm lg:flex-row">
+      <div className="max-h-48 shrink-0 overflow-y-auto rounded-md border border-border lg:h-auto lg:w-72 lg:max-h-none">
+        {players.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="px-2">Name</TableHead>
+                <TableHead className="px-2">Lvl</TableHead>
+                <TableHead className="px-2 text-right">Ping</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {players.map((p) => {
+                const playerArea = mapOf(p.location_x, p.location_y);
+                return (
+                  <TableRow
+                    key={p.playerId}
+                    onClick={() => selectPlayer(p)}
+                    className={cn(
+                      "cursor-pointer",
+                      selectedId === p.playerId ? "bg-secondary" : "hover:bg-secondary/50",
+                    )}
+                  >
+                    <TableCell className="max-w-0 px-2 py-1.5 font-medium text-foreground">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate">{p.name}</span>
+                        {playerArea !== area && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <MapPin className="h-3 w-3 shrink-0 text-muted-foreground/70" />
+                            </TooltipTrigger>
+                            <TooltipContent>On {MAP_AREAS[playerArea].label}</TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-2 py-1.5">{p.level}</TableCell>
+                    <TableCell className="px-2 py-1.5 text-right">{Math.round(p.ping)}ms</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        ) : (
+          <p className="px-2 py-1.5 text-sm text-muted-foreground">No players online.</p>
+        )}
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
