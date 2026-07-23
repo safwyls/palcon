@@ -19,9 +19,10 @@ Data model, phasing, and the full design discussion are in the conversation hist
 Not available via REST or RCON at all — Palworld's API surface has no endpoint for party composition, palbox contents, or per-Pal stats, so this reads the actual save file (`Level.sav`, Unreal Engine's GVAS format) directly:
 
 - **No GVAS parser of our own.** A bundled Python extractor (`internal/palsave/extract_pals.py`, baked into the Docker image with python3) builds on [`palworld-save-tools`](https://github.com/cheahjs/palworld-save-tools) (MIT, the de facto community standard). The Go side shells out to it and caches results keyed on `Level.sav`'s mtime, so re-parses only happen after the game autosaves.
+- **Both save containers are supported.** Saves come wrapped in one of two containers, identified by magic bytes: `PlZ` (zlib, original) and `PlM` (Oodle Kraken, written by game builds 0.6+). palworld-save-tools only reads `PlZ` — upstream's Oodle PR is still open — so the extractor unwraps `PlM` itself via [`pyooz`](https://pypi.org/project/pyooz/), an open-source Kraken decompressor that ships prebuilt musllinux wheels (no compiler in the image). Its published wheel is *decompress-only*, which enforces the read-only rule structurally. Note `ooz` itself carries no license file; it's the implementation every community Palworld tool relies on, but that's worth knowing if this ever stops being self-hosted personal software.
 - **Read-only, hard rule.** The save file is only ever opened for reading. No write-back features until/unless viewing has been solid for a long time.
 - **Setup**: bind-mount the world save folder (the one containing `Level.sav`) read-only into the container (see `docker-compose.yml`), then set that container path as the server's **Save path** in the UI. Servers without a save path simply show setup guidance on the Player details page.
-- **Tests** run against a synthetic `Level.sav` (`internal/palsave/testdata/`, generated with palworld-save-tools' own SAV writer) — no copyrighted game data in the repo.
+- **Tests** run against synthetic saves in both containers (`internal/palsave/testdata/`, see the README there for how they're generated) — no copyrighted game data in the repo.
 
 ## Repo layout
 

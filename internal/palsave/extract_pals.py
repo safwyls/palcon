@@ -34,6 +34,48 @@ from palworld_save_tools.paltypes import PALWORLD_CUSTOM_PROPERTIES, PALWORLD_TY
 ZERO_GUID = "00000000-0000-0000-0000-000000000000"
 
 
+def decompress_sav(raw):
+    """Unwrap a .sav container down to its raw GVAS bytes.
+
+    Palworld has shipped two compression containers, distinguished by the
+    magic bytes in the header (NOT by save_type, whose values overlap
+    between them):
+
+      PlZ - zlib, the original format; palworld-save-tools handles it.
+      PlM - Oodle Kraken, used by newer builds (0.6+). No released version
+            of palworld-save-tools reads this yet (upstream PR #215 is
+            still open), so we unwrap it here via pyooz, an open-source
+            Kraken decompressor. Decompress-only: the published pyooz
+            wheel exposes no compressor, which suits the read-only rule.
+
+    A "CNK" magic marks an Xbox-style chunked header, where the real header
+    starts 12 bytes further in.
+    """
+    header_offset = 12 if raw[8:11] == b"CNK" else 0
+    magic = raw[header_offset + 8 : header_offset + 11]
+
+    if magic != b"PlM":
+        gvas_data, _ = decompress_sav_to_gvas(raw)
+        return gvas_data
+
+    try:
+        import ooz
+    except ImportError:
+        raise SystemExit(
+            "this save uses the newer Oodle-compressed (PlM) format, which needs "
+            "the 'pyooz' package: pip install pyooz"
+        )
+
+    uncompressed_len = int.from_bytes(raw[header_offset : header_offset + 4], "little")
+    compressed_len = int.from_bytes(raw[header_offset + 4 : header_offset + 8], "little")
+    body = raw[header_offset + 12 : header_offset + 12 + compressed_len]
+    if len(body) != compressed_len:
+        raise SystemExit(
+            f"truncated save: header claims {compressed_len} compressed bytes, found {len(body)}"
+        )
+    return ooz.decompress(body, uncompressed_len)
+
+
 def v(node, *path, default=None):
     """Walk nested gvas property dicts, unwrapping {"value": ...} at each step."""
     cur = node
@@ -81,7 +123,7 @@ def main():
 
     with open(sys.argv[1], "rb") as f:
         raw = f.read()
-    gvas_data, _ = decompress_sav_to_gvas(raw)
+    gvas_data = decompress_sav(raw)
     gvas = GvasFile.read(gvas_data, PALWORLD_TYPE_HINTS, PALWORLD_CUSTOM_PROPERTIES, allow_nan=True)
 
     world = gvas.properties.get("worldSaveData", {}).get("value", {})

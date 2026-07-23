@@ -17,10 +17,15 @@ RUN go mod tidy && CGO_ENABLED=0 go build -o /out/palcon ./cmd/palcon
 # ---- runtime ----
 FROM alpine:3.20
 # python3 + palworld-save-tools power the phase 5 Pal viewer (reading
-# Level.sav). Pure-Python, no compiled deps. --break-system-packages is
-# fine here: this image has no other Python consumers to protect.
+# Level.sav). pyooz unwraps the newer Oodle-compressed ("PlM") save
+# container that palworld-save-tools doesn't handle yet; it ships prebuilt
+# musllinux abi3 wheels, so no compiler is needed here, and the published
+# wheel is decompress-only — it structurally cannot write a save.
+# --break-system-packages is fine: this image has no other Python consumers.
 RUN apk add --no-cache python3 py3-pip \
-    && pip install --no-cache-dir --break-system-packages palworld-save-tools==0.24.0
+    && pip install --no-cache-dir --break-system-packages \
+        palworld-save-tools==0.24.0 \
+        pyooz==0.0.8
 RUN adduser -D -u 1000 palcon
 WORKDIR /app
 COPY --from=backend /out/palcon ./palcon
