@@ -4,6 +4,7 @@
 *.db-shm
 *.db-wal
 .env
+app.yaml
 
 # Go
 /bin/

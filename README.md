@@ -101,11 +101,17 @@ docker compose up --build
 4. Make sure the container can reach your Palworld server's REST API port (default `8212`) and/or RCON port (default `25575`) — same Docker network, or the TrueNAS host's IP if the Palworld server runs in a separate app/jail.
 5. Put a reverse proxy (TrueNAS ingress, Traefik, or Nginx Proxy Manager) in front of port 8080 if you want TLS/external access; the session cookie is `HttpOnly` but not marked `Secure` by default since LAN-only HTTP deployments are a legitimate use case here — add `Secure` in `internal/api/auth.go` once you're behind HTTPS.
 
+### Troubleshooting: container crash-loops with `unable to open database file: out of memory (14)`
+
+The Dockerfile runs as a non-root user (uid 1000) for security, not root. If your TrueNAS dataset/host path for `/data` is owned by a different user/group with no write access for uid 1000, SQLite can't create `palcon.db` and fails with this error — SQLite error code `14` is `SQLITE_CANTOPEN`; the "out of memory" wording is just a generic driver string, not an actual memory issue. Check with `ls -la` on the host path. Two ways to fix it:
+
+- **Match ownership**: set `user: "<uid>:<gid>"` in the app's compose spec to the host directory's owning UID/GID (e.g. TrueNAS's `apps` group is usually `568`) — this is what `app.yaml` in this repo does.
+- **Or open up permissions**: `chmod 775` the host directory so its group (already attached to the container via `group_add`) gets write access.
+
 ## Known unverified areas
 
-The Go backend (`go build`/`go vet`) and frontend (`npm run build`) both build clean and have been smoke-tested live — login, encrypted server CRUD, SQLite migrations, auth guard, and SPA serving all confirmed working (see `docs/code-review.md` for the full pass, including two bugs found and fixed since the initial scaffold). CI (`.github/workflows/docker.yml`) now runs the same build/vet/test steps on every push. What's still genuinely unverified:
+The Go backend (`go build`/`go vet`) and frontend (`npm run build`) both build clean and have been smoke-tested live — login, encrypted server CRUD, SQLite migrations, auth guard, and SPA serving all confirmed working (see `docs/code-review.md` for the full pass, including two bugs found and fixed since the initial scaffold). CI (`.github/workflows/docker.yml`) builds and pushes the image on every push to `main`, and it's now been deployed and run successfully on real TrueNAS Scale hardware — the Dockerfile itself is confirmed working end to end. What's still genuinely unverified:
 
-- **`internal/palworld/rest.go` JSON field names** and **`internal/palworld/rcon.go` packet/response parsing** — built from documented/remembered Palworld REST and RCON protocol shapes, never run against a real Palworld server. This is the biggest remaining unknown; everything else in the stack has been exercised.
-- **The Dockerfile itself** — the multi-stage build has never actually been run (`docker build .`); it's what CI will exercise on the next push, which will be the first real test of it.
+- **`internal/palworld/rest.go` JSON field names** and **`internal/palworld/rcon.go` packet/response parsing** — built from documented/remembered Palworld REST and RCON protocol shapes, never run against a real Palworld server. This is the last remaining unknown; everything else in the stack — build, CI, deployment, auth, storage — has now been exercised for real.
 
 Enable your Palworld server's REST API in `PalWorldSettings.ini` (`RESTAPIEnabled=True`, set `RESTAPIPort` and `AdminPassword`) to use the REST transport; otherwise Palcon falls back to RCON automatically.
