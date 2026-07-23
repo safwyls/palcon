@@ -27,3 +27,29 @@ without the game art underneath.
 Both textures are square 8192x8192 images; the map code assumes that (player
 positions are percentages of that square), so a non-square replacement will
 misplace every marker.
+
+# Favicons
+
+`favicon-32.png`, `favicon-192.png` and `apple-touch-icon.png` are generated
+from `palcon_tempicon.png` (a placeholder logo) — cropped to the artwork,
+since the source has ~50% empty margin that would leave the fox unreadable
+at tab size, then squared and resized:
+
+```sh
+python3 - <<'PY'
+from PIL import Image, ImageChops
+src = Image.open("palcon_tempicon.png").convert("RGBA")
+bg = src.getpixel((2, 2))
+diff = ImageChops.difference(src.convert("RGB"), Image.new("RGB", src.size, bg[:3])).convert("L")
+art = src.crop(diff.point(lambda p: 255 if p > 18 else 0).getbbox())
+side = max(art.size); pad = int(side * 0.06)
+canvas = Image.new("RGBA", (side + pad * 2,) * 2, bg)
+canvas.paste(art, ((canvas.width - art.width) // 2, (canvas.height - art.height) // 2), art)
+for nm, sz in (("favicon-32.png", 32), ("favicon-192.png", 192), ("apple-touch-icon.png", 180)):
+    canvas.resize((sz, sz), Image.LANCZOS).save(nm, optimize=True)
+PY
+```
+
+Note that everything in this directory is copied into `web/dist` and embedded
+in the Go binary, so `palcon_tempicon.png` ships (~890 KB) despite only being
+a build-time source. Move it out of `public/` if that matters.
