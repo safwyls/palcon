@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Palworld Admin — Live Map</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      colors: {
+        brand: { red: "#E8491D", amber: "#F2A93B" },
+        pal: { green: "#4A9D7C", blue: "#5B9BD5" },
+        ink: { DEFAULT: "#2B2420", light: "#3D342D", soft: "#544A40" },
+        paper: "#F5EDE1",
+        legendary: "#8B3A9E",
+      },
+      fontFamily: {
+        display: ["Baloo 2", "sans-serif"],
+        body: ["Manrope", "sans-serif"],
+        mono: ["JetBrains Mono", "monospace"],
+      },
+    }},
+  };
+</script>
+<style>
+  body { font-family: 'Manrope', sans-serif; }
+  .font-display { font-family: 'Baloo 2', sans-serif; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+  .clip-notch { clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px)); }
+  .sphere-ring { background: conic-gradient(var(--ring-color, #4A9D7C) 0 50%, #2B2420 50% 100%); }
+
+  .map-canvas {
+    background:
+      radial-gradient(ellipse 60% 45% at 40% 35%, #6BAE8E 0%, #4A9D7C 55%, transparent 56%),
+      radial-gradient(ellipse 35% 30% at 68% 60%, #6BAE8E 0%, #4A9D7C 55%, transparent 56%),
+      radial-gradient(ellipse 20% 18% at 78% 25%, #6BAE8E 0%, #4A9D7C 55%, transparent 56%),
+      #5B9BD5;
+    background-blend-mode: normal;
+  }
+  .map-grid {
+    background-image:
+      linear-gradient(rgba(43,36,32,0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(43,36,32,0.08) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+  .pin {
+    transition: transform 200ms ease, box-shadow 200ms ease;
+  }
+  .pin.selected {
+    transform: scale(1.35);
+    box-shadow: 0 0 0 4px rgba(232,73,29,0.35);
+  }
+  .row-selected {
+    background: rgba(232,73,29,0.08);
+    border-color: rgba(232,73,29,0.3) !important;
+  }
+</style>
+</head>
+<body class="bg-paper text-ink">
+<div class="flex h-screen overflow-hidden">
+
+  <!-- Icon rail -->
+  <aside class="w-[72px] shrink-0 bg-ink flex flex-col items-center py-4 gap-3 border-r border-black/20">
+    <div class="w-9 h-9 rounded-full bg-gradient-to-br from-brand-red to-brand-amber clip-notch mb-2"></div>
+    <button class="relative w-11 h-11 rounded-full sphere-ring p-[3px]" style="--ring-color:#4A9D7C">
+      <span class="flex items-center justify-center w-full h-full rounded-full bg-ink-light text-paper font-display font-700 text-sm">AR</span>
+      <span class="absolute -right-1 -bottom-1 w-3.5 h-3.5 rounded-full bg-pal-green border-2 border-ink"></span>
+    </button>
+    <button class="relative w-11 h-11 rounded-full sphere-ring p-[3px] opacity-70 hover:opacity-100 transition" style="--ring-color:#5B9BD5">
+      <span class="flex items-center justify-center w-full h-full rounded-full bg-ink-light text-paper font-display font-700 text-sm">FP</span>
+      <span class="absolute -right-1 -bottom-1 w-3.5 h-3.5 rounded-full bg-pal-green border-2 border-ink"></span>
+    </button>
+    <button class="relative w-11 h-11 rounded-full sphere-ring p-[3px] opacity-50 hover:opacity-100 transition" style="--ring-color:#E8491D">
+      <span class="flex items-center justify-center w-full h-full rounded-full bg-ink-light text-paper font-display font-700 text-sm">CV</span>
+      <span class="absolute -right-1 -bottom-1 w-3.5 h-3.5 rounded-full bg-ink-soft border-2 border-ink"></span>
+    </button>
+    <button class="w-11 h-11 rounded-full border-2 border-dashed border-white/20 flex items-center justify-center text-paper/40 hover:text-paper/70 hover:border-white/40 transition mt-1">
+      <span class="text-lg leading-none">+</span>
+    </button>
+  </aside>
+
+  <!-- Server sub-nav -->
+  <aside class="w-56 shrink-0 bg-ink-light text-paper flex flex-col border-r border-black/20">
+    <div class="px-5 py-5 border-b border-white/10">
+      <p class="font-display font-700 text-lg leading-tight">Ancient Ruins</p>
+      <div class="flex items-center gap-1.5 mt-1.5">
+        <span class="w-1.5 h-1.5 rounded-full bg-pal-green"></span>
+        <span class="text-xs text-paper/60 font-mono">203.0.113.42:8211</span>
+      </div>
+    </div>
+    <nav class="flex-1 px-3 py-4 space-y-1">
+      <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-paper/60 hover:bg-white/5 text-sm">
+        Dashboard
+      </a>
+      <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-brand-red/15 text-brand-red font-semibold text-sm border border-brand-red/25">
+        Live map
+      </a>
+      <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-paper/30 text-sm cursor-not-allowed">
+        Player details
+        <span class="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-paper/30">soon</span>
+      </a>
+    </nav>
+    <div class="px-5 py-4 border-t border-white/10 text-xs text-paper/40 font-mono">
+      Uptime · 4d 6h 12m
+    </div>
+  </aside>
+
+  <!-- Main: map + player list -->
+  <main class="flex-1 flex overflow-hidden">
+
+    <!-- Map -->
+    <div class="flex-1 relative map-canvas map-grid">
+      <!-- corner HUD -->
+      <div class="absolute top-5 left-5 bg-ink/85 text-paper rounded-xl px-4 py-2.5 font-mono text-xs space-y-0.5 clip-notch">
+        <p id="hud-name" class="font-display font-700 text-sm text-brand-amber">— select a player —</p>
+        <p id="hud-coord">x: — &nbsp; y: —</p>
+      </div>
+
+      <div class="absolute top-5 right-5 bg-white/80 rounded-xl px-3 py-2 text-xs font-mono text-ink/60">
+        18 online · updated 2s ago
+      </div>
+
+      <!-- player pins (positioned by %) -->
+      <button class="pin absolute w-5 h-5 rounded-full bg-pal-green border-2 border-paper shadow" style="top:38%; left:32%;" data-name="Kyoshi" data-x="1204" data-y="882" data-color="#4A9D7C"></button>
+      <button class="pin absolute w-5 h-5 rounded-full bg-brand-amber border-2 border-paper shadow" style="top:52%; left:58%;" data-name="Ren" data-x="2410" data-y="1330" data-color="#F2A93B"></button>
+      <button class="pin absolute w-5 h-5 rounded-full bg-legendary border-2 border-paper shadow" style="top:24%; left:71%;" data-name="Maverick" data-x="3120" data-y="510" data-color="#8B3A9E"></button>
+    </div>
+
+    <!-- Player list -->
+    <aside class="w-72 shrink-0 bg-white/80 border-l border-ink/10 flex flex-col">
+      <div class="px-5 py-4 border-b border-ink/10">
+        <h2 class="font-display font-700 text-base">Players</h2>
+        <p class="text-xs text-ink/40 font-mono mt-0.5">Click to zoom on map</p>
+      </div>
+      <div class="flex-1 overflow-y-auto p-3 space-y-2" id="player-rows">
+        <button class="player-row w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-ink/10 hover:border-ink/25 transition text-left" data-name="Kyoshi" data-x="1204" data-y="882" data-color="#4A9D7C">
+          <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:#4A9D7C"></span>
+          <span class="flex-1">
+            <span class="block text-sm font-semibold">Kyoshi</span>
+            <span class="block text-xs text-ink/40 font-mono">Lv.42 · 38ms</span>
+          </span>
+        </button>
+        <button class="player-row w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-ink/10 hover:border-ink/25 transition text-left" data-name="Ren" data-x="2410" data-y="1330" data-color="#F2A93B">
+          <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:#F2A93B"></span>
+          <span class="flex-1">
+            <span class="block text-sm font-semibold">Ren</span>
+            <span class="block text-xs text-ink/40 font-mono">Lv.37 · 96ms</span>
+          </span>
+        </button>
+        <button class="player-row w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-ink/10 hover:border-ink/25 transition text-left" data-name="Maverick" data-x="3120" data-y="510" data-color="#8B3A9E">
+          <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:#8B3A9E"></span>
+          <span class="flex-1">
+            <span class="block text-sm font-semibold">Maverick</span>
+            <span class="block text-xs text-ink/40 font-mono">Lv.51 · 21ms</span>
+          </span>
+        </button>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script>
+  const pins = document.querySelectorAll('.pin');
+  const rows = document.querySelectorAll('.player-row');
+  const hudName = document.getElementById('hud-name');
+  const hudCoord = document.getElementById('hud-coord');
+
+  function selectPlayer(name) {
+    pins.forEach(p => p.classList.toggle('selected', p.dataset.name === name));
+    rows.forEach(r => r.classList.toggle('row-selected', r.dataset.name === name));
+    const el = [...pins].find(p => p.dataset.name === name);
+    if (el) {
+      hudName.textContent = el.dataset.name;
+      hudCoord.textContent = `x: ${el.dataset.x}  y: ${el.dataset.y}`;
+    }
+  }
+
+  pins.forEach(p => p.addEventListener('click', () => selectPlayer(p.dataset.name)));
+  rows.forEach(r => r.addEventListener('click', () => selectPlayer(r.dataset.name)));
+</script>
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Palworld Admin — Mobile</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      colors: {
+        brand: { red: "#E8491D", amber: "#F2A93B" },
+        pal: { green: "#4A9D7C", blue: "#5B9BD5" },
+        ink: { DEFAULT: "#2B2420", light: "#3D342D", soft: "#544A40" },
+        paper: "#F5EDE1",
+        legendary: "#8B3A9E",
+      },
+      fontFamily: {
+        display: ["Baloo 2", "sans-serif"],
+        body: ["Manrope", "sans-serif"],
+        mono: ["JetBrains Mono", "monospace"],
+      },
+    }},
+  };
+</script>
+<style>
+  html, body { height: 100%; margin:0; font-family:'Manrope', sans-serif; background:#DCD5C6; }
+  .font-display { font-family: 'Baloo 2', sans-serif; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+  .clip-notch { clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px)); }
+  .sphere-ring { background: conic-gradient(var(--ring-color, #4A9D7C) 0 50%, #2B2420 50% 100%); }
+  .phone { width: 390px; height: 780px; background:#F5EDE1; border-radius: 36px; box-shadow: 0 20px 50px rgba(43,36,32,0.25); overflow:hidden; position:relative; border: 6px solid #2B2420; }
+  .map-canvas {
+    background:
+      radial-gradient(ellipse 65% 45% at 42% 35%, #6BAE8E 0%, #4A9D7C 55%, transparent 56%),
+      radial-gradient(ellipse 30% 25% at 70% 62%, #6BAE8E 0%, #4A9D7C 55%, transparent 56%),
+      #5B9BD5;
+  }
+  .sheet { transition: transform 260ms ease; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+</style>
+</head>
+<body class="flex items-center justify-center min-h-screen py-10">
+
+<div class="phone flex flex-col">
+
+  <!-- Top bar -->
+  <div class="bg-ink text-paper px-4 pt-4 pb-3 shrink-0">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <span class="relative w-9 h-9 rounded-full sphere-ring p-[2px]" style="--ring-color:#4A9D7C">
+          <span class="flex items-center justify-center w-full h-full rounded-full bg-ink-light font-display font-700 text-xs">AR</span>
+        </span>
+        <div>
+          <p class="font-display font-700 text-sm leading-tight">Ancient Ruins</p>
+          <p class="text-[11px] text-paper/50 font-mono">18 / 32 online</p>
+        </div>
+      </div>
+      <button class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-paper/70 text-sm">⋮</button>
+    </div>
+
+    <!-- segmented control -->
+    <div class="mt-3 flex bg-white/10 rounded-xl p-1 text-sm font-semibold">
+      <button onclick="showTab('dashboard')" id="tab-btn-dashboard" class="flex-1 py-1.5 rounded-lg bg-brand-red text-paper transition">Dashboard</button>
+      <button onclick="showTab('map')" id="tab-btn-map" class="flex-1 py-1.5 rounded-lg text-paper/60 transition">Live map</button>
+    </div>
+  </div>
+
+  <!-- Dashboard tab -->
+  <div id="tab-dashboard" class="tab-panel active flex-1 overflow-y-auto p-4 space-y-4">
+
+    <div class="grid grid-cols-2 gap-3">
+      <div class="bg-white/70 rounded-xl p-3.5 border border-ink/10">
+        <p class="text-[10px] uppercase tracking-wide text-ink/50 font-semibold">Players</p>
+        <p class="font-mono text-lg font-700 text-pal-green mt-1">18 / 32</p>
+      </div>
+      <div class="bg-white/70 rounded-xl p-3.5 border border-ink/10">
+        <p class="text-[10px] uppercase tracking-wide text-ink/50 font-semibold">Tick</p>
+        <p class="font-mono text-lg font-700 text-pal-blue mt-1">29.8 ms</p>
+      </div>
+      <div class="bg-white/70 rounded-xl p-3.5 border border-ink/10">
+        <p class="text-[10px] uppercase tracking-wide text-ink/50 font-semibold">Memory</p>
+        <p class="font-mono text-lg font-700 text-brand-amber mt-1">6.2/12 GB</p>
+      </div>
+      <div class="bg-white/70 rounded-xl p-3.5 border border-ink/10">
+        <p class="text-[10px] uppercase tracking-wide text-ink/50 font-semibold">Last save</p>
+        <p class="font-mono text-lg font-700 mt-1">6 min ago</p>
+      </div>
+    </div>
+
+    <div class="bg-white/70 rounded-xl border border-ink/10 overflow-hidden">
+      <div class="px-4 py-3 border-b border-ink/10 flex items-center justify-between">
+        <h2 class="font-display font-700 text-sm">Players online</h2>
+        <span class="text-[11px] font-mono text-ink/40">18</span>
+      </div>
+      <div class="divide-y divide-ink/5">
+        <div class="px-4 py-2.5 flex items-center gap-2.5">
+          <span class="w-6 h-6 rounded-full bg-pal-green/20 text-pal-green flex items-center justify-center font-display font-700 text-[10px]">Ky</span>
+          <span class="flex-1 text-sm">Kyoshi</span>
+          <span class="text-xs font-mono text-ink/40">38ms</span>
+        </div>
+        <div class="px-4 py-2.5 flex items-center gap-2.5">
+          <span class="w-6 h-6 rounded-full bg-brand-amber/20 text-brand-amber flex items-center justify-center font-display font-700 text-[10px]">Rn</span>
+          <span class="flex-1 text-sm">Ren</span>
+          <span class="text-xs font-mono text-ink/40">96ms</span>
+        </div>
+        <div class="px-4 py-2.5 flex items-center gap-2.5">
+          <span class="w-6 h-6 rounded-full bg-legendary/20 text-legendary flex items-center justify-center font-display font-700 text-[10px]">Mv</span>
+          <span class="flex-1 text-sm">Maverick</span>
+          <span class="text-xs font-mono text-ink/40">21ms</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-white/70 rounded-xl border border-ink/10 p-4">
+      <label class="text-[10px] uppercase tracking-wide text-ink/40 font-semibold">Broadcast message</label>
+      <div class="flex gap-2 mt-2">
+        <input type="text" placeholder="Restarting in 10 min…" class="flex-1 text-sm border border-ink/15 rounded-lg px-3 py-2 bg-white focus:outline-none">
+        <button class="font-display font-700 text-sm bg-brand-red text-paper px-3.5 rounded-lg">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Map tab -->
+  <div id="tab-map" class="tab-panel flex-1 relative overflow-hidden">
+    <div class="absolute inset-0 map-canvas"></div>
+
+    <div class="absolute top-3 left-3 bg-ink/85 text-paper rounded-lg px-3 py-2 font-mono text-[11px] clip-notch">
+      <p class="font-display font-700 text-xs text-brand-amber">Kyoshi</p>
+      <p>x: 1204  y: 882</p>
+    </div>
+
+    <button class="pin absolute w-4 h-4 rounded-full bg-pal-green border-2 border-paper shadow" style="top:40%; left:34%;"></button>
+    <button class="pin absolute w-4 h-4 rounded-full bg-brand-amber border-2 border-paper shadow" style="top:55%; left:60%;"></button>
+    <button class="pin absolute w-4 h-4 rounded-full bg-legendary border-2 border-paper shadow" style="top:22%; left:73%;"></button>
+
+    <!-- bottom sheet toggle -->
+    <button onclick="toggleSheet()" class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-ink text-paper text-xs font-display font-700 px-4 py-2 rounded-full shadow-lg">
+      Players (18)
+    </button>
+
+    <div id="sheet" class="sheet absolute left-0 right-0 bottom-0 bg-white/95 rounded-t-2xl border-t border-ink/10 p-4 translate-y-full" style="max-height:55%;">
+      <div class="w-10 h-1 rounded-full bg-ink/20 mx-auto mb-3"></div>
+      <div class="space-y-2 overflow-y-auto" style="max-height:180px;">
+        <button class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border border-ink/10 text-left">
+          <span class="w-2 h-2 rounded-full bg-pal-green"></span>
+          <span class="flex-1 text-sm font-semibold">Kyoshi</span>
+          <span class="text-xs font-mono text-ink/40">Lv.42</span>
+        </button>
+        <button class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border border-ink/10 text-left">
+          <span class="w-2 h-2 rounded-full bg-brand-amber"></span>
+          <span class="flex-1 text-sm font-semibold">Ren</span>
+          <span class="text-xs font-mono text-ink/40">Lv.37</span>
+        </button>
+        <button class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border border-ink/10 text-left">
+          <span class="w-2 h-2 rounded-full bg-legendary"></span>
+          <span class="flex-1 text-sm font-semibold">Maverick</span>
+          <span class="text-xs font-mono text-ink/40">Lv.51</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom server tab bar -->
+  <div class="shrink-0 bg-ink border-t border-black/20 flex items-center justify-around py-2.5">
+    <button class="relative w-10 h-10 rounded-full sphere-ring p-[2px]" style="--ring-color:#4A9D7C">
+      <span class="flex items-center justify-center w-full h-full rounded-full bg-ink-light text-paper font-display font-700 text-xs">AR</span>
+    </button>
+    <button class="relative w-10 h-10 rounded-full sphere-ring p-[2px] opacity-60" style="--ring-color:#5B9BD5">
+      <span class="flex items-center justify-center w-full h-full rounded-full bg-ink-light text-paper font-display font-700 text-xs">FP</span>
+    </button>
+    <button class="relative w-10 h-10 rounded-full sphere-ring p-[2px] opacity-40" style="--ring-color:#E8491D">
+      <span class="flex items-center justify-center w-full h-full rounded-full bg-ink-light text-paper font-display font-700 text-xs">CV</span>
+    </button>
+    <button class="w-10 h-10 rounded-full border-2 border-dashed border-white/20 flex items-center justify-center text-paper/40">+</button>
+  </div>
+
+</div>
+
+<script>
+  function showTab(name) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    const dash = document.getElementById('tab-btn-dashboard');
+    const map = document.getElementById('tab-btn-map');
+    if (name === 'dashboard') {
+      dash.classList.add('bg-brand-red','text-paper'); dash.classList.remove('text-paper/60');
+      map.classList.remove('bg-brand-red','text-paper'); map.classList.add('text-paper/60');
+    } else {
+      map.classList.add('bg-brand-red','text-paper'); map.classList.remove('text-paper/60');
+      dash.classList.remove('bg-brand-red','text-paper'); dash.classList.add('text-paper/60');
+    }
+  }
+  let sheetOpen = false;
+  function toggleSheet() {
+    sheetOpen = !sheetOpen;
+    document.getElementById('sheet').style.transform = sheetOpen ? 'translateY(0)' : 'translateY(100%)';
+  }
+</script>
+</body>
+</html>

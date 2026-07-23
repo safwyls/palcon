@@ -5,14 +5,14 @@ export function MapAreaToggle({ area, onChange }: { area: MapArea; onChange: (ar
   if (MAP_AREA_ORDER.length <= 1) return null;
 
   return (
-    <div className="inline-flex rounded-md border border-brand-red/30 bg-brand-amber/10 p-0.5">
+    <div className="inline-flex rounded-xl border border-ink/15 bg-paper p-1 shadow-lg">
       {MAP_AREA_ORDER.map((a) => (
         <button
           key={a}
           onClick={() => onChange(a)}
           className={cn(
-            "rounded-[5px] px-3 py-1.5 text-sm font-medium transition-colors",
-            a === area ? "bg-brand-red text-primary-foreground shadow-sm" : "text-foreground/70 hover:bg-brand-amber/20",
+            "rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors",
+            a === area ? "bg-brand-red text-paper" : "text-ink/60 hover:bg-ink/5",
           )}
         >
           {MAP_AREAS[a].label}

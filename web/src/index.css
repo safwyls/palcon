@@ -40,8 +40,14 @@ body {
    CTAs and hero panels — not applied globally, or it stops reading as a
    deliberate accent. */
 .clip-notch {
-  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
 }
 .clip-notch-lg {
   clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 22px 100%, 0 calc(100% - 22px));
+}
+
+/* Pal Sphere ring: top half in the server's assigned color, bottom half ink,
+   like the capture-sphere split. Used by the server rail buttons. */
+.sphere-ring {
+  background: conic-gradient(var(--ring-color, #4A9D7C) 0 50%, #2B2420 50% 100%);
 }

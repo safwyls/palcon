@@ -1,11 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-
-function formatUptime(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  return `${h}h ${m}m`;
-}
+import { formatUptime } from "../lib/palette";
 
 export function ServerMetrics({ serverId }: { serverId: number }) {
   const metricsQuery = useQuery({
@@ -21,7 +16,11 @@ export function ServerMetrics({ serverId }: { serverId: number }) {
   if (metricsQuery.isError) {
     const err = metricsQuery.error;
     if (err instanceof ApiError && err.status === 400) {
-      return <p className="text-sm text-muted-foreground">Requires the REST API — this server is configured RCON-only.</p>;
+      return (
+        <p className="text-sm text-muted-foreground">
+          Metrics require the REST API — this server is configured RCON-only.
+        </p>
+      );
     }
     return <p className="text-sm text-destructive">Could not reach server.</p>;
   }
@@ -30,18 +29,18 @@ export function ServerMetrics({ serverId }: { serverId: number }) {
   if (!m) return null;
 
   const stats = [
-    { label: "Players", value: `${m.currentplayernum} / ${m.maxplayernum}`, color: "text-pal-blue" },
-    { label: "Days elapsed", value: m.days, color: "text-brand-amber" },
-    { label: "Uptime", value: formatUptime(m.uptime), color: "text-pal-green" },
-    { label: "Server FPS", value: m.serverfps.toFixed(1), color: "text-brand-red" },
+    { label: "Players online", value: `${m.currentplayernum} / ${m.maxplayernum}`, color: "text-pal-green" },
+    { label: "Server tick", value: `${m.serverframetime.toFixed(1)} ms`, color: "text-pal-blue" },
+    { label: "In-game days", value: String(m.days), color: "text-brand-amber" },
+    { label: "Uptime", value: formatUptime(m.uptime), color: "text-ink" },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
       {stats.map((s) => (
-        <div key={s.label} className="rounded-md border border-border bg-muted/20 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{s.label}</p>
-          <p className={`mt-1 font-mono text-lg font-bold ${s.color}`}>{s.value}</p>
+        <div key={s.label} className="rounded-2xl border border-ink/10 bg-white/70 p-4 lg:p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">{s.label}</p>
+          <p className={`mt-2 font-mono text-lg font-bold lg:text-2xl ${s.color}`}>{s.value}</p>
         </div>
       ))}
     </div>

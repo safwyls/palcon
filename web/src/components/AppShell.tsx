@@ -1,18 +1,27 @@
 import { useEffect } from "react";
 import { Outlet, useMatch } from "react-router-dom";
-import { cn } from "../lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "../lib/api";
 import { preloadMapTextures } from "../lib/map";
-import { AppSidebar } from "./AppSidebar";
+import { ServerRail } from "./ServerRail";
+import { ServerSubNav } from "./ServerSubNav";
+import { MobileTopBar, MobileBottomRail } from "./MobileChrome";
 
 /**
- * Split-pane shell: a persistent sidebar (server list) + main content pane.
- * On screens narrower than `lg`, only one pane shows at a time — which pane
- * is driven by the route itself (server selected -> detail pane; otherwise
- * -> sidebar), so there's no separate mobile navigation state to keep in
- * sync, and the browser back button "just works" for going back to the list.
+ * App chrome, per mocks/dashboard.html + mobile.html:
+ * - Desktop (lg+): [icon rail][server sub-nav][content] — Discord-style
+ *   server switching via Pal Sphere buttons, dark two-column nav.
+ * - Mobile: [top bar w/ segmented view control][content][bottom server rail].
+ * Which server is active comes from the route, so back/forward and deep
+ * links keep working with no separate selection state.
  */
 export function AppShell() {
-  const onServerDetail = useMatch("/servers/:serverID/*") !== null;
+  const match = useMatch("/servers/:serverID/*");
+  const activeServerId = match ? Number(match.params.serverID) : null;
+
+  const serversQuery = useQuery({ queryKey: ["servers"], queryFn: api.listServers });
+  const servers = serversQuery.data ?? [];
+  const activeServer = servers.find((s) => s.id === activeServerId) ?? null;
 
   useEffect(() => {
     preloadMapTextures();
@@ -20,17 +29,22 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <aside
-        className={cn(
-          "w-full shrink-0 border-border lg:block lg:w-64 lg:border-r",
-          onServerDetail ? "hidden" : "block",
-        )}
-      >
-        <AppSidebar />
-      </aside>
-      <main className={cn("min-w-0 flex-1 overflow-y-auto lg:block", onServerDetail ? "block" : "hidden")}>
-        <Outlet />
-      </main>
+      <div className="hidden lg:flex">
+        <ServerRail servers={servers} activeServerId={activeServerId} />
+        {activeServer && <ServerSubNav server={activeServer} />}
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="lg:hidden">
+          <MobileTopBar server={activeServer} />
+        </div>
+        <main className="min-h-0 flex-1 overflow-y-auto">
+          <Outlet />
+        </main>
+        <div className="lg:hidden">
+          <MobileBottomRail servers={servers} activeServerId={activeServerId} />
+        </div>
+      </div>
     </div>
   );
 }

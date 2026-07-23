@@ -57,6 +57,7 @@ export default {
         ink: {
           DEFAULT: "#2B2420",
           light: "#3D342D",
+          soft: "#544A40",
           muted: "#5F5850",
         },
         paper: "#F5EDE1",
