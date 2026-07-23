@@ -1,0 +1,21 @@
+/data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+.env
+
+# Go
+/bin/
+*.exe
+
+# Node / frontend
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep
+*.tsbuildinfo
+
+# Editor
+.vscode/
+.idea/
+*.swp
