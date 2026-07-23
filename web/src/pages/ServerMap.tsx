@@ -141,6 +141,15 @@ export function ServerMap() {
           <MapAreaToggle area={area} onChange={setArea} />
         </div>
 
+        {/* The world map art is Pocketpair's, not ours — credited in the
+            corner where map attribution conventionally sits. Abbreviated on
+            narrow screens, where the full line would run under the area
+            toggle sitting at bottom-center. */}
+        <p className="pointer-events-none absolute bottom-4 left-4 z-10 rounded bg-ink/70 px-2 py-1 font-mono text-[10px] text-paper/60">
+          <span className="lg:hidden">© Pocketpair</span>
+          <span className="hidden lg:inline">Map imagery © Pocketpair, Inc.</span>
+        </p>
+
         {/* Mobile: player list lives in a bottom sheet. */}
         {!sheetOpen && players.length > 0 && (
           <button
