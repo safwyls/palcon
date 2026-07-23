@@ -1,5 +1,7 @@
 # Palcon
 
+[![Docker](https://github.com/safwyls/palcon/actions/workflows/docker.yml/badge.svg)](https://github.com/safwyls/palcon/actions/workflows/docker.yml)
+
 Self-hosted RCON/REST management server for Palworld dedicated servers, built to run as a Docker container on TrueNAS Scale.
 
 ## Architecture
@@ -50,6 +52,22 @@ The frontend dev server runs on its own port with hot reload; the Go server serv
 
 ## Docker
 
+### Pre-built image (recommended)
+
+Every push to `main` builds and publishes an image via GitHub Actions (`.github/workflows/docker.yml`) to GitHub Container Registry — no local Docker needed to get an image:
+
+```sh
+docker pull ghcr.io/safwyls/palcon:latest
+docker run -p 8080:8080 \
+  -v $(pwd)/data:/data \
+  -e JWT_SECRET=... -e ENCRYPTION_KEY=... -e ADMIN_PASSWORD=... \
+  ghcr.io/safwyls/palcon:latest
+```
+
+Tags published: `latest` (tip of `main`), `main` (branch name), `sha-<short-sha>` (every commit), and `X.Y.Z`/`X.Y` (if you push a `vX.Y.Z` git tag). The package is public by default for a public repo; if the repo is private, TrueNAS will need a GHCR pull secret (a GitHub PAT with `read:packages`).
+
+### Building locally
+
 ```sh
 docker build -t palcon .
 docker run -p 8080:8080 \
@@ -58,7 +76,7 @@ docker run -p 8080:8080 \
   palcon
 ```
 
-Or with `docker-compose.yml` (reads from `.env`):
+Or with `docker-compose.yml` (reads from `.env`, builds locally by default — swap `build: .` for `image: ghcr.io/safwyls/palcon:latest` to use the published image instead):
 
 ```sh
 docker compose up --build
@@ -77,19 +95,17 @@ docker compose up --build
 
 ## Deploying on TrueNAS Scale
 
-1. Push the built image to a registry TrueNAS can reach (or build directly on the box if you install Docker there).
+1. Use the image GitHub Actions already publishes: `ghcr.io/safwyls/palcon:latest` (see [Docker](#docker) above) — no build step needed on the TrueNAS box itself.
 2. Create a dataset for persistent data, e.g. `/mnt/tank/apps/palcon/data`.
-3. Add a Custom App (Docker Compose) in the TrueNAS Scale Apps UI, pointing at this repo's `docker-compose.yml`, with the volume mapped to that dataset and the env vars set from the table above.
+3. Add a Custom App (Docker Compose) in the TrueNAS Scale Apps UI, pointing at this repo's `docker-compose.yml` (switch its `build: .` to `image: ghcr.io/safwyls/palcon:latest`), with the volume mapped to that dataset and the env vars set from the table above.
 4. Make sure the container can reach your Palworld server's REST API port (default `8212`) and/or RCON port (default `25575`) — same Docker network, or the TrueNAS host's IP if the Palworld server runs in a separate app/jail.
 5. Put a reverse proxy (TrueNAS ingress, Traefik, or Nginx Proxy Manager) in front of port 8080 if you want TLS/external access; the session cookie is `HttpOnly` but not marked `Secure` by default since LAN-only HTTP deployments are a legitimate use case here — add `Secure` in `internal/api/auth.go` once you're behind HTTPS.
 
 ## Known unverified areas
 
-Nothing in this scaffold has been compiled or run yet (no Go/Node toolchain was available while writing it). Before trusting it end to end, expect to shake out:
+The Go backend (`go build`/`go vet`) and frontend (`npm run build`) both build clean and have been smoke-tested live — login, encrypted server CRUD, SQLite migrations, auth guard, and SPA serving all confirmed working (see `docs/code-review.md` for the full pass, including two bugs found and fixed since the initial scaffold). CI (`.github/workflows/docker.yml`) now runs the same build/vet/test steps on every push. What's still genuinely unverified:
 
-- **`internal/palworld/rest.go` JSON field names** — matched against publicly documented Palworld REST API shapes, but should be checked against a real server's actual responses (particularly `/v1/api/players` field names).
-- **`internal/palworld/rcon.go` packet parsing** — implements the Source RCON protocol from spec; needs testing against a real Palworld RCON port, especially the `ShowPlayers` CSV parsing.
-- **`internal/db/db.go` sqlite DSN string** (`file:...?_pragma=foreign_keys(1)`) — matches `modernc.org/sqlite`'s documented pragma syntax but hasn't been run.
-- **`go.sum`** doesn't exist yet — `go mod tidy` (locally or via the Dockerfile's build stage) generates it on first build.
+- **`internal/palworld/rest.go` JSON field names** and **`internal/palworld/rcon.go` packet/response parsing** — built from documented/remembered Palworld REST and RCON protocol shapes, never run against a real Palworld server. This is the biggest remaining unknown; everything else in the stack has been exercised.
+- **The Dockerfile itself** — the multi-stage build has never actually been run (`docker build .`); it's what CI will exercise on the next push, which will be the first real test of it.
 
 Enable your Palworld server's REST API in `PalWorldSettings.ini` (`RESTAPIEnabled=True`, set `RESTAPIPort` and `AdminPassword`) to use the REST transport; otherwise Palcon falls back to RCON automatically.

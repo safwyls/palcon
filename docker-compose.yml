@@ -1,6 +1,9 @@
 services:
   palcon:
     build: .
+    # For TrueNAS/production, swap the line above for the published image
+    # instead of building locally:
+    # image: ghcr.io/safwyls/palcon:latest
     ports:
       - "8080:8080"
     volumes:
