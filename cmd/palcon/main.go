@@ -16,6 +16,7 @@ import (
 	"github.com/safwyls/palcon/internal/config"
 	"github.com/safwyls/palcon/internal/crypto"
 	"github.com/safwyls/palcon/internal/db"
+	"github.com/safwyls/palcon/internal/palsave"
 	"github.com/safwyls/palcon/internal/store"
 	"github.com/safwyls/palcon/web"
 )
@@ -59,7 +60,15 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	apiServer := api.New(st, cfg.JWTSecret, logger)
+	// Materializes the embedded save-extractor script into the data dir;
+	// actually using it also requires python3 + palworld-save-tools in the
+	// runtime environment (both present in the Docker image).
+	palReader, err := palsave.NewReader(cfg.DataDir)
+	if err != nil {
+		return err
+	}
+
+	apiServer := api.New(st, cfg.JWTSecret, logger, palReader)
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           apiServer.Routes(distFS),

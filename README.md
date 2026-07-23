@@ -14,13 +14,14 @@ Self-hosted RCON/REST management server for Palworld dedicated servers, built to
 
 Data model, phasing, and the full design discussion are in the conversation history that produced this scaffold. Phase 1 (this scaffold) covers: multi-server registry, REST/RCON actions (info, players, broadcast, kick, ban, unban, save, shutdown), and the dashboard UI. The schema already has tables for phase 2 (scheduled tasks) and phase 3 (Discord notifications) — not wired up yet. Live server metrics, a read-only settings viewer, and a real-time player map (phase 4 material) shipped as part of the UI redesign.
 
-### Phase 5 (planned): Pal party/palbox viewer
+### Phase 5: Pal party/palbox viewer ("Player details")
 
-Not available via REST or RCON at all — Palworld's API surface has no endpoint for party composition, palbox contents, or per-Pal stats. Getting this means reading the actual save file (`.sav`, Unreal Engine's GVAS format) directly:
+Not available via REST or RCON at all — Palworld's API surface has no endpoint for party composition, palbox contents, or per-Pal stats, so this reads the actual save file (`Level.sav`, Unreal Engine's GVAS format) directly:
 
-- **Don't write a GVAS parser from scratch.** [`palworld-save-tools`](https://github.com/cheahjs/palworld-save-tools) (Python, MIT, 863 stars, actively maintained, the de facto standard other community tools build on — `PalEdit`, `palworld-server-tool`, etc. all depend on it) already does this correctly, with a "SAV → JSON → SAV round-trips bit-for-bit" correctness guarantee. Shell out to it (or wrap it in a small sidecar service) rather than reimplementing binary save parsing in Go.
-- **Read-only first, hard rule.** Corrupting a save file is a much worse failure mode than anything the REST/RCON actions can currently do. No writes back to the save file until viewing is solid and well-tested.
-- **Deployment**: since palcon and the Palworld server both run on the same TrueNAS host, this needs a read-only bind mount of the server's save directory into the palcon container — an optional per-server config addition (e.g. a nullable `save_path` column on `servers`), not a new architectural pattern.
+- **No GVAS parser of our own.** A bundled Python extractor (`internal/palsave/extract_pals.py`, baked into the Docker image with python3) builds on [`palworld-save-tools`](https://github.com/cheahjs/palworld-save-tools) (MIT, the de facto community standard). The Go side shells out to it and caches results keyed on `Level.sav`'s mtime, so re-parses only happen after the game autosaves.
+- **Read-only, hard rule.** The save file is only ever opened for reading. No write-back features until/unless viewing has been solid for a long time.
+- **Setup**: bind-mount the world save folder (the one containing `Level.sav`) read-only into the container (see `docker-compose.yml`), then set that container path as the server's **Save path** in the UI. Servers without a save path simply show setup guidance on the Player details page.
+- **Tests** run against a synthetic `Level.sav` (`internal/palsave/testdata/`, generated with palworld-save-tools' own SAV writer) — no copyrighted game data in the repo.
 
 ## Repo layout
 

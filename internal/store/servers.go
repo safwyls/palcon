@@ -22,6 +22,9 @@ type Server struct {
 	RESTPassword string
 	UseREST      bool
 	Enabled      bool
+	// SavePath is an optional container-local path to the directory holding
+	// the server's Level.sav (phase 5 Pal viewer). Empty = not configured.
+	SavePath string
 }
 
 type serverRow struct {
@@ -34,6 +37,7 @@ type serverRow struct {
 	RESTPasswordEnc string
 	UseREST         int
 	Enabled         int
+	SavePath        string
 }
 
 func (s *Store) decryptServer(r serverRow) (*Server, error) {
@@ -55,14 +59,15 @@ func (s *Store) decryptServer(r serverRow) (*Server, error) {
 		RESTPassword: restPass,
 		UseREST:      r.UseREST != 0,
 		Enabled:      r.Enabled != 0,
+		SavePath:     r.SavePath,
 	}, nil
 }
 
-const serverColumns = `id, name, host, rcon_port, rcon_password_enc, rest_port, rest_password_enc, use_rest, enabled`
+const serverColumns = `id, name, host, rcon_port, rcon_password_enc, rest_port, rest_password_enc, use_rest, enabled, save_path`
 
 func scanServerRow(scan func(dest ...any) error) (serverRow, error) {
 	var r serverRow
-	err := scan(&r.ID, &r.Name, &r.Host, &r.RCONPort, &r.RCONPasswordEnc, &r.RESTPort, &r.RESTPasswordEnc, &r.UseREST, &r.Enabled)
+	err := scan(&r.ID, &r.Name, &r.Host, &r.RCONPort, &r.RCONPasswordEnc, &r.RESTPort, &r.RESTPasswordEnc, &r.UseREST, &r.Enabled, &r.SavePath)
 	return r, err
 }
 
@@ -112,9 +117,9 @@ func (s *Store) CreateServer(ctx context.Context, srv *Server) (int64, error) {
 		return 0, err
 	}
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO servers (name, host, rcon_port, rcon_password_enc, rest_port, rest_password_enc, use_rest, enabled)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		srv.Name, srv.Host, srv.RCONPort, rconEnc, srv.RESTPort, restEnc, boolToInt(srv.UseREST), boolToInt(srv.Enabled))
+		INSERT INTO servers (name, host, rcon_port, rcon_password_enc, rest_port, rest_password_enc, use_rest, enabled, save_path)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		srv.Name, srv.Host, srv.RCONPort, rconEnc, srv.RESTPort, restEnc, boolToInt(srv.UseREST), boolToInt(srv.Enabled), srv.SavePath)
 	if err != nil {
 		return 0, err
 	}
@@ -148,10 +153,11 @@ func (s *Store) UpdateServer(ctx context.Context, srv *Server) error {
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE servers
 		SET name = ?, host = ?, rcon_port = ?, rcon_password_enc = ?,
-		    rest_port = ?, rest_password_enc = ?, use_rest = ?, enabled = ?
+		    rest_port = ?, rest_password_enc = ?, use_rest = ?, enabled = ?,
+		    save_path = ?
 		WHERE id = ?`,
 		srv.Name, srv.Host, srv.RCONPort, rconEnc, srv.RESTPort, restEnc,
-		boolToInt(srv.UseREST), boolToInt(srv.Enabled), srv.ID)
+		boolToInt(srv.UseREST), boolToInt(srv.Enabled), srv.SavePath, srv.ID)
 	return err
 }
 

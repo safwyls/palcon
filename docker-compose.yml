@@ -8,6 +8,10 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/data
+      # Phase 5 Pal viewer: bind-mount your Palworld server's save world
+      # directory (the folder containing Level.sav) READ-ONLY, then set that
+      # container path as the server's "Save path" in the palcon UI, e.g.:
+      # - /path/to/Pal/Saved/SaveGames/0/<world-id>:/saves/myserver:ro
     environment:
       - HTTP_ADDR=:8080
       - DATA_DIR=/data

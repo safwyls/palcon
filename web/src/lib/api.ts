@@ -38,6 +38,7 @@ export interface Server {
   hasRestPassword: boolean;
   useRest: boolean;
   enabled: boolean;
+  savePath: string;
 }
 
 export interface ServerWriteInput {
@@ -49,6 +50,7 @@ export interface ServerWriteInput {
   restPassword?: string;
   useRest: boolean;
   enabled: boolean;
+  savePath: string;
 }
 
 export interface ServerInfo {
@@ -78,6 +80,36 @@ export interface Metrics {
 }
 
 export type Settings = Record<string, unknown>;
+
+export interface Pal {
+  instanceId: string;
+  characterId: string;
+  nickname: string;
+  level: number;
+  gender: "male" | "female" | "";
+  isBoss: boolean;
+  isLucky: boolean;
+  rank: number;
+  talentHp: number;
+  talentShot: number;
+  talentDefense: number;
+  passives: string[];
+}
+
+export interface PlayerPals {
+  uid: string;
+  nickname: string;
+  level: number;
+  party: Pal[];
+  palbox: Pal[];
+  base: Pal[];
+}
+
+export interface PalsResult {
+  players: PlayerPals[];
+  parsedAt: string;
+  saveModTime: string;
+}
 
 export const api = {
   login: (username: string, password: string) =>
@@ -109,4 +141,8 @@ export const api = {
   // REST-only — throws a 400 ApiError for servers configured RCON-only.
   serverSettings: (id: number) => request<Settings>(`/servers/${id}/settings`),
   serverMetrics: (id: number) => request<Metrics>(`/servers/${id}/metrics`),
+
+  // Save-file-backed (phase 5) — throws a 400 ApiError when the server has
+  // no save path configured.
+  serverPals: (id: number) => request<PalsResult>(`/servers/${id}/pals`),
 };

@@ -94,10 +94,9 @@ export function ServerSubNav({ server }: { server: Server }) {
         <NavLink to={`/servers/${server.id}/map`} className={navLinkClass}>
           Live map
         </NavLink>
-        <span className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-paper/30">
+        <NavLink to={`/servers/${server.id}/players`} className={navLinkClass}>
           Player details
-          <span className="ml-auto rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-paper/30">soon</span>
-        </span>
+        </NavLink>
       </nav>
 
       {metricsQuery.isSuccess && (

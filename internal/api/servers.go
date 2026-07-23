@@ -23,6 +23,7 @@ type serverDTO struct {
 	HasRESTPassword bool   `json:"hasRestPassword"`
 	UseREST         bool   `json:"useRest"`
 	Enabled         bool   `json:"enabled"`
+	SavePath        string `json:"savePath"`
 }
 
 func toDTO(srv *store.Server) serverDTO {
@@ -36,6 +37,7 @@ func toDTO(srv *store.Server) serverDTO {
 		HasRESTPassword: srv.RESTPassword != "",
 		UseREST:         srv.UseREST,
 		Enabled:         srv.Enabled,
+		SavePath:        srv.SavePath,
 	}
 }
 
@@ -48,6 +50,7 @@ type serverWriteRequest struct {
 	RESTPassword string `json:"restPassword"`
 	UseREST      bool   `json:"useRest"`
 	Enabled      bool   `json:"enabled"`
+	SavePath     string `json:"savePath"`
 }
 
 func serverIDFromRequest(r *http.Request) (int64, error) {
@@ -96,6 +99,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		RCONPort: req.RCONPort, RCONPassword: req.RCONPassword,
 		RESTPort: req.RESTPort, RESTPassword: req.RESTPassword,
 		UseREST: req.UseREST, Enabled: req.Enabled,
+		SavePath: req.SavePath,
 	}
 	id, err := s.store.CreateServer(r.Context(), srv)
 	if err != nil {
@@ -122,6 +126,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		RCONPort: req.RCONPort, RCONPassword: req.RCONPassword,
 		RESTPort: req.RESTPort, RESTPassword: req.RESTPassword,
 		UseREST: req.UseREST, Enabled: req.Enabled,
+		SavePath: req.SavePath,
 	}
 	if err := s.store.UpdateServer(r.Context(), srv); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update server")

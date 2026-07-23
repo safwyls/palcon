@@ -17,6 +17,7 @@ const emptyForm: ServerWriteInput = {
   restPassword: "",
   useRest: true,
   enabled: true,
+  savePath: "",
 };
 
 function formStateFor(mode: "create" | "edit", server?: Server): ServerWriteInput {
@@ -30,6 +31,7 @@ function formStateFor(mode: "create" | "edit", server?: Server): ServerWriteInpu
       restPassword: "",
       useRest: server.useRest,
       enabled: server.enabled,
+      savePath: server.savePath,
     };
   }
   return emptyForm;
@@ -111,6 +113,19 @@ export function ServerFormDialog({
               type="password"
               placeholder={mode === "edit" && server?.hasRconPassword ? "unchanged" : undefined}
             />
+          </div>
+
+          <div className="mt-4 space-y-1.5">
+            <Label>Save path (optional)</Label>
+            <Input
+              value={form.savePath}
+              placeholder="/saves/myserver"
+              onChange={(e) => setForm({ ...form, savePath: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Container path to the world save folder (holds <code>Level.sav</code>), mounted read-only.
+              Enables the Pal party/palbox viewer.
+            </p>
           </div>
 
           <div className="mt-4 flex items-center gap-2">

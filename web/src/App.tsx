@@ -4,6 +4,7 @@ import { Login } from "./pages/Login";
 import { EmptyState } from "./pages/EmptyState";
 import { ServerDashboard } from "./pages/ServerDashboard";
 import { ServerMap } from "./pages/ServerMap";
+import { ServerPlayers } from "./pages/ServerPlayers";
 import { AppShell } from "./components/AppShell";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -31,6 +32,7 @@ export function App() {
           <Route path="/" element={<EmptyState />} />
           <Route path="/servers/:serverID" element={<ServerDashboard />} />
           <Route path="/servers/:serverID/map" element={<ServerMap />} />
+          <Route path="/servers/:serverID/players" element={<ServerPlayers />} />
         </Route>
       </Routes>
     </TooltipProvider>

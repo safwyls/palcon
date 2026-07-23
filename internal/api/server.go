@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/safwyls/palcon/internal/palsave"
 	"github.com/safwyls/palcon/internal/store"
 )
 
@@ -18,10 +19,11 @@ type Server struct {
 	store     *store.Store
 	jwtSecret []byte
 	logger    *slog.Logger
+	palReader *palsave.Reader
 }
 
-func New(st *store.Store, jwtSecret []byte, logger *slog.Logger) *Server {
-	return &Server{store: st, jwtSecret: jwtSecret, logger: logger}
+func New(st *store.Store, jwtSecret []byte, logger *slog.Logger, palReader *palsave.Reader) *Server {
+	return &Server{store: st, jwtSecret: jwtSecret, logger: logger, palReader: palReader}
 }
 
 // Routes builds the full HTTP handler: JSON API under /api, and the built
@@ -62,6 +64,7 @@ func (s *Server) Routes(staticFS fs.FS) http.Handler {
 				r.Post("/shutdown", s.handleServerShutdown)
 				r.Get("/settings", s.handleServerSettings)
 				r.Get("/metrics", s.handleServerMetrics)
+				r.Get("/pals", s.handleServerPals)
 			})
 		})
 	})
