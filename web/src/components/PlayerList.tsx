@@ -1,4 +1,6 @@
 import type { Player } from "../lib/api";
+import { Button } from "./ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
 export function PlayerList({
   players,
@@ -10,36 +12,36 @@ export function PlayerList({
   onBan: (player: Player) => void;
 }) {
   if (players.length === 0) {
-    return <p className="text-sm text-slate-500">No players online.</p>;
+    return <p className="text-sm text-muted-foreground">No players online.</p>;
   }
 
   return (
-    <table className="w-full text-left text-sm">
-      <thead className="text-slate-400">
-        <tr>
-          <th className="py-1 pr-4">Name</th>
-          <th className="py-1 pr-4">Level</th>
-          <th className="py-1 pr-4">Ping</th>
-          <th className="py-1"></th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Name</TableHead>
+          <TableHead>Level</TableHead>
+          <TableHead>Ping</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {players.map((p) => (
-          <tr key={p.playerId} className="border-t border-slate-800">
-            <td className="py-2 pr-4">{p.name}</td>
-            <td className="py-2 pr-4">{p.level}</td>
-            <td className="py-2 pr-4">{Math.round(p.ping)}ms</td>
-            <td className="space-x-2 py-2 text-right">
-              <button onClick={() => onKick(p)} className="rounded bg-amber-700 px-2 py-1 text-xs hover:bg-amber-600">
+          <TableRow key={p.playerId}>
+            <TableCell className="font-medium text-foreground">{p.name}</TableCell>
+            <TableCell>{p.level}</TableCell>
+            <TableCell>{Math.round(p.ping)}ms</TableCell>
+            <TableCell className="space-x-2 text-right">
+              <Button variant="secondary" size="sm" onClick={() => onKick(p)}>
                 Kick
-              </button>
-              <button onClick={() => onBan(p)} className="rounded bg-red-800 px-2 py-1 text-xs hover:bg-red-700">
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => onBan(p)}>
                 Ban
-              </button>
-            </td>
-          </tr>
+              </Button>
+            </TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   );
 }

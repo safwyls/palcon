@@ -12,7 +12,15 @@ Self-hosted RCON/REST management server for Palworld dedicated servers, built to
 - **Server communication**: `internal/palworld` talks to each Palworld server over its REST API (preferred) with automatic fallback to Source RCON if the REST API is unreachable
 - **Auth**: single bootstrap admin user, JWT session cookie
 
-Data model, phasing, and the full design discussion are in the conversation history that produced this scaffold. Phase 1 (this scaffold) covers: multi-server registry, REST/RCON actions (info, players, broadcast, kick, ban, unban, save, shutdown), and the dashboard UI. The schema already has tables for phase 2 (scheduled tasks), phase 3 (Discord notifications), and phase 4 (player/metrics history) — those features aren't wired up yet.
+Data model, phasing, and the full design discussion are in the conversation history that produced this scaffold. Phase 1 (this scaffold) covers: multi-server registry, REST/RCON actions (info, players, broadcast, kick, ban, unban, save, shutdown), and the dashboard UI. The schema already has tables for phase 2 (scheduled tasks) and phase 3 (Discord notifications) — not wired up yet. Live server metrics, a read-only settings viewer, and a real-time player map (phase 4 material) shipped as part of the UI redesign.
+
+### Phase 5 (planned): Pal party/palbox viewer
+
+Not available via REST or RCON at all — Palworld's API surface has no endpoint for party composition, palbox contents, or per-Pal stats. Getting this means reading the actual save file (`.sav`, Unreal Engine's GVAS format) directly:
+
+- **Don't write a GVAS parser from scratch.** [`palworld-save-tools`](https://github.com/cheahjs/palworld-save-tools) (Python, MIT, 863 stars, actively maintained, the de facto standard other community tools build on — `PalEdit`, `palworld-server-tool`, etc. all depend on it) already does this correctly, with a "SAV → JSON → SAV round-trips bit-for-bit" correctness guarantee. Shell out to it (or wrap it in a small sidecar service) rather than reimplementing binary save parsing in Go.
+- **Read-only first, hard rule.** Corrupting a save file is a much worse failure mode than anything the REST/RCON actions can currently do. No writes back to the save file until viewing is solid and well-tested.
+- **Deployment**: since palcon and the Palworld server both run on the same TrueNAS host, this needs a read-only bind mount of the server's save directory into the palcon container — an optional per-server config addition (e.g. a nullable `save_path` column on `servers`), not a new architectural pattern.
 
 ## Repo layout
 

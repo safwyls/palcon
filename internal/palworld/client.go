@@ -11,6 +11,11 @@ type ServerInfo struct {
 	ServerName  string `json:"servername"`
 	Version     string `json:"version"`
 	PlayerCount int    `json:"playerCount"`
+	// Transport reports which transport actually served this request:
+	// "rest" or "rcon". With PreferREST set, this can differ from the
+	// server's configured preference if REST was unreachable and the
+	// client fell back to RCON.
+	Transport string `json:"transport"`
 }
 
 type Player struct {
@@ -34,6 +39,26 @@ type Client interface {
 	Unban(ctx context.Context, playerUID string) error
 	Save(ctx context.Context) error
 	Shutdown(ctx context.Context, waitSeconds int, message string) error
+}
+
+type Metrics struct {
+	ServerFPS        float64 `json:"serverfps"`
+	ServerFrameTime  float64 `json:"serverframetime"`
+	CurrentPlayerNum int     `json:"currentplayernum"`
+	MaxPlayerNum     int     `json:"maxplayernum"`
+	UptimeSeconds    int     `json:"uptime"`
+	Days             int     `json:"days"`
+}
+
+// ExtendedClient is REST-only functionality with no RCON equivalent —
+// Palworld's RCON command set has nothing corresponding to the settings
+// dump or metrics endpoints. Only RESTClient (and fallbackClient, when its
+// primary is REST) implement it; a plain *RCONClient does not, so a type
+// assertion (`c, ok := client.(ExtendedClient)`) is how callers detect
+// whether a given server's configured transport supports these calls.
+type ExtendedClient interface {
+	Settings(ctx context.Context) (map[string]any, error)
+	Metrics(ctx context.Context) (*Metrics, error)
 }
 
 // Config carries connection details for a single server. Passwords are

@@ -64,3 +64,15 @@ func (f *fallbackClient) Shutdown(ctx context.Context, waitSeconds int, message 
 	}
 	return f.fallback.Shutdown(ctx, waitSeconds, message)
 }
+
+// Settings and Metrics have no RCON equivalent, so there's nothing to fall
+// back to — these just forward to the REST primary. fallbackClient is only
+// ever constructed with a REST primary (see New in client.go), so this
+// type assertion always succeeds.
+func (f *fallbackClient) Settings(ctx context.Context) (map[string]any, error) {
+	return f.primary.(ExtendedClient).Settings(ctx)
+}
+
+func (f *fallbackClient) Metrics(ctx context.Context) (*Metrics, error) {
+	return f.primary.(ExtendedClient).Metrics(ctx)
+}

@@ -16,6 +16,11 @@ web/dist/*
 !web/dist/.gitkeep
 *.tsbuildinfo
 
+# Palworld world map textures - copyrighted game assets. Supply your own
+# copies locally; they're never committed. See web/public/README.md.
+web/public/palworld-map.*
+web/public/palworld-treemap.*
+
 # Editor
 .vscode/
 .idea/

@@ -55,6 +55,7 @@ export interface ServerInfo {
   servername: string;
   version: string;
   playerCount: number;
+  transport: "rest" | "rcon";
 }
 
 export interface Player {
@@ -63,7 +64,20 @@ export interface Player {
   userId: string;
   level: number;
   ping: number;
+  location_x: number;
+  location_y: number;
 }
+
+export interface Metrics {
+  serverfps: number;
+  serverframetime: number;
+  currentplayernum: number;
+  maxplayernum: number;
+  uptime: number;
+  days: number;
+}
+
+export type Settings = Record<string, unknown>;
 
 export const api = {
   login: (username: string, password: string) =>
@@ -91,4 +105,8 @@ export const api = {
   save: (id: number) => request<void>(`/servers/${id}/save`, { method: "POST" }),
   shutdown: (id: number, waitSeconds: number, message: string) =>
     request<void>(`/servers/${id}/shutdown`, { method: "POST", body: JSON.stringify({ waitSeconds, message }) }),
+
+  // REST-only — throws a 400 ApiError for servers configured RCON-only.
+  serverSettings: (id: number) => request<Settings>(`/servers/${id}/settings`),
+  serverMetrics: (id: number) => request<Metrics>(`/servers/${id}/metrics`),
 };

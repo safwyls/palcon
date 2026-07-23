@@ -146,3 +146,41 @@ func (s *Server) handleServerShutdown(w http.ResponseWriter, r *http.Request) {
 		return c.Shutdown(r.Context(), req.WaitSeconds, req.Message)
 	})
 }
+
+func (s *Server) handleServerSettings(w http.ResponseWriter, r *http.Request) {
+	client, _, err := s.clientForServerID(r)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "server not found")
+		return
+	}
+	ext, ok := client.(palworld.ExtendedClient)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "this server is configured RCON-only; settings require the REST API")
+		return
+	}
+	settings, err := ext.Settings(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, settings)
+}
+
+func (s *Server) handleServerMetrics(w http.ResponseWriter, r *http.Request) {
+	client, _, err := s.clientForServerID(r)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "server not found")
+		return
+	}
+	ext, ok := client.(palworld.ExtendedClient)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "this server is configured RCON-only; metrics require the REST API")
+		return
+	}
+	metrics, err := ext.Metrics(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, metrics)
+}

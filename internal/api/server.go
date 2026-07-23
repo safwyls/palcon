@@ -60,6 +60,8 @@ func (s *Server) Routes(staticFS fs.FS) http.Handler {
 				r.Post("/unban", s.handleServerUnban)
 				r.Post("/save", s.handleServerSave)
 				r.Post("/shutdown", s.handleServerShutdown)
+				r.Get("/settings", s.handleServerSettings)
+				r.Get("/metrics", s.handleServerMetrics)
 			})
 		})
 	})

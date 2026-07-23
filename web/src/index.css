@@ -1,3 +1,47 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Palworld-branded light theme — this app has no light/dark toggle.
+   Values are the HSL equivalents of mocks/tailwind.config.js's literal
+   palette (brand red-orange, amber, grass green, sky blue, warm ink/paper
+   neutrals), mapped onto shadcn's semantic tokens so existing components
+   didn't need per-component rewrites. See mocks/*.html for the source design. */
+:root {
+  --background: 36 50% 92%; /* paper #F5EDE1 */
+  --foreground: 22 15% 15%; /* ink #2B2420 */
+  --card: 33 40% 96%;
+  --card-foreground: 22 15% 15%;
+  --popover: 33 40% 96%;
+  --popover-foreground: 22 15% 15%;
+  --primary: 13 82% 51%; /* brand red-orange #E8491D */
+  --primary-foreground: 36 50% 96%;
+  --secondary: 30 20% 88%;
+  --secondary-foreground: 22 15% 15%;
+  --muted: 33 25% 90%;
+  --muted-foreground: 25 12% 42%;
+  --accent: 36 88% 59%; /* brand amber #F2A93B */
+  --accent-foreground: 22 15% 15%;
+  --destructive: 3 71% 41%; /* deliberately a deeper, more alarm-toned red
+    than --primary so destructive actions (kick/ban/delete/shutdown) stay
+    visually distinct from routine primary actions */
+  --destructive-foreground: 36 50% 96%;
+  --border: 25 20% 84%;
+  --input: 25 20% 84%;
+  --ring: 13 82% 51%;
+  --radius: 0.85rem;
+}
+
+body {
+  @apply bg-background text-foreground font-body;
+}
+
+/* Signature clipped-corner shape from the mocks, used sparingly on primary
+   CTAs and hero panels — not applied globally, or it stops reading as a
+   deliberate accent. */
+.clip-notch {
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+}
+.clip-notch-lg {
+  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 22px 100%, 0 calc(100% - 22px));
+}

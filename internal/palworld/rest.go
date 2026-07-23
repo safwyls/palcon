@@ -78,6 +78,7 @@ func (c *RESTClient) Info(ctx context.Context) (*ServerInfo, error) {
 		return nil, err
 	}
 	info.PlayerCount = len(players)
+	info.Transport = "rest"
 	return &info, nil
 }
 
@@ -116,4 +117,23 @@ func (c *RESTClient) Shutdown(ctx context.Context, waitSeconds int, message stri
 		"waittime": waitSeconds,
 		"message":  message,
 	}, nil)
+}
+
+// Settings returns the server's PalWorldSettings.ini values as a raw map —
+// there are dozens of possible keys and no fixed schema worth modeling in
+// Go, so callers get the JSON object as-is.
+func (c *RESTClient) Settings(ctx context.Context) (map[string]any, error) {
+	var out map[string]any
+	if err := c.do(ctx, http.MethodGet, "/v1/api/settings", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *RESTClient) Metrics(ctx context.Context) (*Metrics, error) {
+	var m Metrics
+	if err := c.do(ctx, http.MethodGet, "/v1/api/metrics", nil, &m); err != nil {
+		return nil, err
+	}
+	return &m, nil
 }

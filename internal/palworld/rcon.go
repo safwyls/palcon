@@ -121,7 +121,7 @@ func (c *RCONClient) Info(ctx context.Context) (*ServerInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	info := &ServerInfo{ServerName: out}
+	info := &ServerInfo{ServerName: out, Transport: "rcon"}
 	// Typical response: "Welcome to Pal Server[v0.1.2.3] MyServerName"
 	if start := strings.Index(out, "] "); start != -1 {
 		info.ServerName = strings.TrimSpace(out[start+2:])
