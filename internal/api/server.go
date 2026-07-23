@@ -64,6 +64,7 @@ func (s *Server) Routes(staticFS fs.FS) http.Handler {
 				r.Post("/shutdown", s.handleServerShutdown)
 				r.Get("/settings", s.handleServerSettings)
 				r.Get("/metrics", s.handleServerMetrics)
+				r.Get("/metrics/history", s.handleServerMetricsHistory)
 				r.Get("/pals", s.handleServerPals)
 			})
 		})

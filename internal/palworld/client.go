@@ -19,13 +19,13 @@ type ServerInfo struct {
 }
 
 type Player struct {
-	Name       string  `json:"name"`
-	PlayerUID  string  `json:"playerId"` // steam/platform id, used for kick/ban
-	UserID     string  `json:"userId"`
-	Level      int     `json:"level"`
-	Ping       float64 `json:"ping"`
-	LocationX  float64 `json:"location_x"`
-	LocationY  float64 `json:"location_y"`
+	Name      string  `json:"name"`
+	PlayerUID string  `json:"playerId"` // steam/platform id, used for kick/ban
+	UserID    string  `json:"userId"`
+	Level     int     `json:"level"`
+	Ping      float64 `json:"ping"`
+	LocationX float64 `json:"location_x"`
+	LocationY float64 `json:"location_y"`
 }
 
 // Client is the set of operations palcon needs from a Palworld server,

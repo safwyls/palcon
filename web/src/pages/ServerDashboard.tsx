@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api, type Player } from "../lib/api";
 import { PlayerList } from "../components/PlayerList";
 import { ServerMetrics } from "../components/ServerMetrics";
+import { ServerPerformance } from "../components/ServerPerformance";
 import { ServerSettings } from "../components/ServerSettings";
 import { ServerUnreachable } from "../components/ServerUnreachable";
 import { BroadcastDialog, ShutdownDialog } from "../components/ServerActionDialogs";
@@ -106,6 +107,8 @@ export function ServerDashboard() {
       ) : (
         <div className="space-y-4 p-4 lg:space-y-6 lg:p-8">
           <ServerMetrics serverId={id} />
+
+          <ServerPerformance serverId={id} />
 
           <div className="grid grid-cols-1 gap-4 lg:gap-6 xl:grid-cols-3">
             <section className="overflow-hidden rounded-2xl border border-ink/10 bg-white/70 xl:col-span-2">

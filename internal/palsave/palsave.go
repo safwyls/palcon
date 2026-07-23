@@ -9,8 +9,8 @@ package palsave
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"

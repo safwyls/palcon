@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/safwyls/palcon/internal/api"
+	"github.com/safwyls/palcon/internal/collector"
 	"github.com/safwyls/palcon/internal/config"
 	"github.com/safwyls/palcon/internal/crypto"
 	"github.com/safwyls/palcon/internal/db"
@@ -67,6 +68,10 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+
+	// Samples server health in the background so the dashboard charts have
+	// history to draw, rather than only what's happened since page load.
+	go collector.New(st, logger).Run(ctx)
 
 	apiServer := api.New(st, cfg.JWTSecret, logger, palReader)
 	httpServer := &http.Server{

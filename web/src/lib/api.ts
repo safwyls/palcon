@@ -81,6 +81,22 @@ export interface Metrics {
 
 export type Settings = Record<string, unknown>;
 
+/** One collected sample. Nulls are real gaps — the server was unreachable
+ * or reported nothing — and must break the line rather than plot as zero. */
+export interface MetricPoint {
+  ts: string;
+  playerCount: number | null;
+  maxPlayers: number | null;
+  serverFps: number | null;
+  frameTime: number | null;
+}
+
+export interface MetricsHistory {
+  points: MetricPoint[];
+  /** Collection cadence, so the chart can tell a gap from sparse sampling. */
+  intervalSeconds: number;
+}
+
 export interface Pal {
   instanceId: string;
   characterId: string;
@@ -141,6 +157,8 @@ export const api = {
   // REST-only — throws a 400 ApiError for servers configured RCON-only.
   serverSettings: (id: number) => request<Settings>(`/servers/${id}/settings`),
   serverMetrics: (id: number) => request<Metrics>(`/servers/${id}/metrics`),
+  serverMetricsHistory: (id: number, minutes: number) =>
+    request<MetricsHistory>(`/servers/${id}/metrics/history?minutes=${minutes}`),
 
   // Save-file-backed (phase 5) — throws a 400 ApiError when the server has
   // no save path configured.
