@@ -91,15 +91,15 @@ export function PlayerMap({
 
   return (
     <div className="flex h-full flex-col gap-3 lg:flex-row">
-      <div className="order-2 max-h-48 shrink-0 overflow-y-auto rounded-lg border border-border bg-card shadow-sm lg:order-1 lg:h-auto lg:w-96 lg:max-h-none">
+      <div className="order-2 max-h-48 shrink-0 overflow-y-auto rounded-lg border border-border bg-card shadow-sm lg:order-1 lg:h-auto lg:w-[36rem] lg:max-h-none">
         {players.length > 0 ? (
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
                 <TableHead className="px-2">Name</TableHead>
-                <TableHead className="px-2">Lvl</TableHead>
-                <TableHead className="px-2 text-right">Ping</TableHead>
-                <TableHead className="px-2 text-right">Coords</TableHead>
+                <TableHead className="w-12 px-2">Lvl</TableHead>
+                <TableHead className="w-16 px-2 text-right">Ping</TableHead>
+                <TableHead className="w-36 px-2 text-right">Coords</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -114,9 +114,9 @@ export function PlayerMap({
                       selectedId === p.playerId ? "bg-secondary" : "hover:bg-secondary/50",
                     )}
                   >
-                    <TableCell className="max-w-0 px-2 py-1.5 font-medium text-foreground">
+                    <TableCell className="px-2 py-1.5 font-medium text-foreground">
                       <div className="flex items-center gap-1.5">
-                        <span className="truncate" title={p.name}>{p.name}</span>
+                        <span className="min-w-0 truncate" title={p.name}>{p.name}</span>
                         {playerArea !== area && (
                           <Tooltip>
                             <TooltipTrigger asChild>
