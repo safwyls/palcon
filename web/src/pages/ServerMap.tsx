@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { PlayerMap } from "../components/PlayerMap";
 import { ServerPageHeader } from "../components/ServerPageHeader";
+import { ServerUnreachable } from "../components/ServerUnreachable";
 
 export function ServerMap() {
   const { serverID } = useParams();
@@ -29,21 +30,27 @@ export function ServerMap() {
         transport={infoQuery.data?.transport}
       />
 
-      {playersQuery.isLoading && <p className="text-sm text-muted-foreground">Loading players...</p>}
-      {playersQuery.isError && <p className="text-sm text-destructive">Could not reach server.</p>}
-      {playersQuery.data && (
-        // The map texture is a fixed 8192x8192 square, and player positions
-        // are plotted as percentages of that square — so the container must
-        // stay square too, or object-cover crops the image asymmetrically
-        // while the percentage math stays naive to it, drifting the dots out
-        // of alignment with the visible map (worse the more non-square the
-        // box is, e.g. an ultrawide window). Fit-to-available-space instead
-        // of stretching: h-full sizes by height, max-w-full caps it by width
-        // when that's the tighter constraint, and the aspect-ratio box
-        // recomputes the other dimension to stay square either way.
-        <div className="min-h-0 flex-1">
-          <PlayerMap players={playersQuery.data} className="mx-auto h-full w-auto max-w-full" />
-        </div>
+      {infoQuery.isError ? (
+        <ServerUnreachable />
+      ) : (
+        <>
+          {playersQuery.isLoading && <p className="text-sm text-muted-foreground">Loading players...</p>}
+          {playersQuery.isError && <p className="text-sm text-destructive">Could not reach server.</p>}
+          {playersQuery.data && (
+            // The map texture is a fixed 8192x8192 square, and player positions
+            // are plotted as percentages of that square — so the container must
+            // stay square too, or object-cover crops the image asymmetrically
+            // while the percentage math stays naive to it, drifting the dots out
+            // of alignment with the visible map (worse the more non-square the
+            // box is, e.g. an ultrawide window). Fit-to-available-space instead
+            // of stretching: h-full sizes by height, max-w-full caps it by width
+            // when that's the tighter constraint, and the aspect-ratio box
+            // recomputes the other dimension to stay square either way.
+            <div className="min-h-0 flex-1">
+              <PlayerMap players={playersQuery.data} className="mx-auto h-full w-auto max-w-full" />
+            </div>
+          )}
+        </>
       )}
     </div>
   );

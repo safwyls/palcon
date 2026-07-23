@@ -8,6 +8,7 @@ import { PlayerList } from "../components/PlayerList";
 import { ServerMetrics } from "../components/ServerMetrics";
 import { ServerSettings } from "../components/ServerSettings";
 import { ServerPageHeader } from "../components/ServerPageHeader";
+import { ServerUnreachable } from "../components/ServerUnreachable";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -73,7 +74,7 @@ export function ServerDashboard() {
   const server = serverQuery.data;
 
   return (
-    <div className="p-4 sm:p-6">
+    <div className="flex h-full flex-col p-4 sm:p-6">
       <ServerPageHeader
         server={server}
         statusText={infoQuery.data?.version ?? (infoQuery.isError ? "unreachable" : "checking...")}
@@ -86,6 +87,9 @@ export function ServerDashboard() {
         }
       />
 
+      {infoQuery.isError ? (
+        <ServerUnreachable />
+      ) : (
       <div className="space-y-4">
         <Card>
           <CardHeader>
@@ -163,6 +167,7 @@ export function ServerDashboard() {
           </CardContent>
         </Card>
       </div>
+      )}
     </div>
   );
 }
