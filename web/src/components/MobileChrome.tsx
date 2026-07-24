@@ -153,6 +153,9 @@ export function MobileTopBar({ server }: { server: Server | null }) {
           <NavLink to={`/servers/${server.id}/players`} className={segmentClass}>
             Pals
           </NavLink>
+          <NavLink to={`/servers/${server.id}/guilds`} className={segmentClass}>
+            Guilds
+          </NavLink>
         </div>
       )}
 

@@ -15,6 +15,9 @@ import { TooltipProvider } from "./components/ui/tooltip";
 const ServerPlayers = lazy(() =>
   import("./pages/ServerPlayers").then((m) => ({ default: m.ServerPlayers })),
 );
+const ServerGuilds = lazy(() =>
+  import("./pages/ServerGuilds").then((m) => ({ default: m.ServerGuilds })),
+);
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { username, loading } = useAuth();
@@ -39,6 +42,14 @@ export function App() {
           <Route path="/" element={<EmptyState />} />
           <Route path="/servers/:serverID" element={<ServerDashboard />} />
           <Route path="/servers/:serverID/map" element={<ServerMap />} />
+          <Route
+            path="/servers/:serverID/guilds"
+            element={
+              <Suspense fallback={<p className="p-6 text-muted-foreground">Loading…</p>}>
+                <ServerGuilds />
+              </Suspense>
+            }
+          />
           <Route
             path="/servers/:serverID/players"
             element={

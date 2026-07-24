@@ -34,6 +34,8 @@ from palworld_save_tools.gvas import GvasFile, GvasHeader
 from palworld_save_tools.palsav import decompress_sav_to_gvas
 from palworld_save_tools.paltypes import PALWORLD_TYPE_HINTS
 
+from guilds import decode_guild
+
 ZERO_GUID = "00000000-0000-0000-0000-000000000000"
 
 CHARACTER_PATH = ".worldSaveData.CharacterSaveParameterMap.Value.RawData"
@@ -253,17 +255,18 @@ def skip_property(reader, type_name, size):
     reader.skip(size)
 
 
-def read_character_entries(gvas_data):
-    """Pull CharacterSaveParameterMap out of Level.sav, skipping everything else.
+def read_sections(gvas_data, wanted):
+    """Pull just the named worldSaveData sections, skipping everything else.
 
     A world save holds ~22 sections, and the ones we never look at —
     foliage instances, every placed structure, every container slot — are
     the enormous ones. Parsing them costs minutes and gigabytes on an
     established world (byte arrays deserialize into Python lists of ints),
     purely to be discarded. Properties are length-prefixed, so we walk the
-    top level and seek past anything that isn't the character map, and
-    stop reading the moment we have it.
+    top level, seek past anything unwanted, and stop as soon as everything
+    asked for has been read.
     """
+    found = {}
     with FArchiveReader(
         gvas_data, PALWORLD_TYPE_HINTS, CUSTOM_PROPERTIES, allow_nan=True
     ) as reader:
@@ -288,14 +291,21 @@ def read_character_entries(gvas_data):
                     break
                 inner_type = reader.fstring()
                 inner_size = reader.u64()
-                if inner == "CharacterSaveParameterMap":
-                    prop = reader.property(
-                        inner_type, inner_size, ".worldSaveData.CharacterSaveParameterMap"
-                    )
-                    return prop.get("value", [])
+                if inner in wanted:
+                    prop = reader.property(inner_type, inner_size, f".worldSaveData.{inner}")
+                    found[inner] = prop.get("value", [])
+                    if len(found) == len(wanted):
+                        return found
+                    continue
                 skip_property(reader, inner_type, inner_size)
             break
-    return []
+    return found
+
+
+def read_character_entries(gvas_data):
+    return read_sections(gvas_data, {"CharacterSaveParameterMap"}).get(
+        "CharacterSaveParameterMap", []
+    )
 
 
 def read_gvas(path, custom_properties):
@@ -309,6 +319,66 @@ def read_gvas(path, custom_properties):
         )
 
 
+def parse_base_camps(entries, reader_source):
+    """Base camps as {guild id: [{x, y}]}.
+
+    A camp's own name is an untranslated internal placeholder, so camps are
+    labelled by the guild that owns them instead. Coordinates come out in
+    the same world space the live map already plots players in.
+    """
+    by_guild = {}
+    for entry in entries or []:
+        try:
+            raw = bytes(entry["value"]["RawData"]["value"]["values"])
+            r = reader_source.internal_copy(raw, debug=False)
+            r.guid()          # camp id
+            r.fstring()       # placeholder name
+            r.byte()          # state
+            transform = r.ftransform()
+            r.float()         # area range
+            guild_id = str(r.guid())
+        except Exception as exc:
+            print(f"warning: skipping a base camp: {exc}", file=sys.stderr)
+            continue
+        t = transform.get("translation", {})
+        by_guild.setdefault(guild_id, []).append(
+            {"x": t.get("x", 0.0), "y": t.get("y", 0.0)}
+        )
+    return by_guild
+
+
+def parse_guilds(entries, base_camps):
+    out = []
+    for entry in entries or []:
+        group_type = text(entry.get("value", {}), "GroupType")
+        if "Guild" not in group_type:
+            continue  # organizations and parties aren't player guilds
+        raw = v(entry.get("value", {}), "RawData", "values", default=None)
+        if raw is None:
+            continue
+        guild = decode_guild(raw)
+        if not guild:
+            continue
+        guild["bases"] = base_camps.get(guild["id"], [])
+        out.append(guild)
+    out.sort(key=lambda g: (-len(g["members"]), g["name"].lower()))
+    return out
+
+
+# Unreal FDateTime counts 100ns ticks from 0001-01-01; Unix time starts here.
+FDATETIME_EPOCH_OFFSET = 62_135_596_800
+
+
+def ticks_to_unix(ticks):
+    if not ticks:
+        return 0
+    seconds = ticks / 10_000_000 - FDATETIME_EPOCH_OFFSET
+    # Reject anything not in living memory: the field is absent or holds
+    # something else entirely on some saves, and a bogus date is worse
+    # than none.
+    return round(seconds) if 1_500_000_000 < seconds < 4_000_000_000 else 0
+
+
 def player_containers_from_dir(players_dir):
     """Map each player's pal containers from Players/<uid>.sav.
 
@@ -317,11 +387,11 @@ def player_containers_from_dir(players_dir):
     per-player files, and dropped OwnerPlayerUId from pals entirely — so
     a pal's owner is now established by which container holds it.
 
-    Returns {container_guid: (player_uid, bucket)}.
+    Returns ({container_guid: (player_uid, bucket)}, {uid: player metadata}).
     """
-    index = {}
+    index, meta = {}, {}
     if not os.path.isdir(players_dir):
-        return index
+        return index, meta
     for name in sorted(os.listdir(players_dir)):
         if not name.lower().endswith(".sav"):
             continue
@@ -333,6 +403,14 @@ def player_containers_from_dir(players_dir):
         uid = str(unwrap(save_data.get("PlayerUId")) or "")
         if not uid:
             continue
+        translation = v(save_data, "LastTransform", "Translation", default=None) or {}
+        meta[uid] = {
+            "lastOnline": ticks_to_unix(num(save_data, "LastOnlineDateTime")),
+            "lastX": unwrap(translation.get("x")) if "x" in translation else None,
+            "lastY": unwrap(translation.get("y")) if "y" in translation else None,
+            "platform": text(save_data, "PlayerPlatform").split("::")[-1],
+            "technologyPoints": num(save_data, "TechnologyPoint"),
+        }
         for key, bucket in (
             ("OtomoCharacterContainerId", "party"),
             ("PalStorageContainerId", "palbox"),
@@ -340,7 +418,7 @@ def player_containers_from_dir(players_dir):
             cid = container_id(save_data, key)
             if cid:
                 index[cid] = (uid, bucket)
-    return index
+    return index, meta
 
 
 def main():
@@ -353,13 +431,25 @@ def main():
         level_path = os.path.join(level_path, "Level.sav")
 
     # container guid -> (player uid, "party" | "palbox")
-    containers = player_containers_from_dir(os.path.join(os.path.dirname(level_path), "Players"))
+    containers, player_meta = player_containers_from_dir(
+        os.path.join(os.path.dirname(level_path), "Players")
+    )
 
     with open(level_path, "rb") as f:
         gvas_data = decompress_sav(f.read())
+    guilds = []
     try:
         with contextlib.redirect_stdout(sys.stderr):
-            char_map = read_character_entries(gvas_data)
+            sections = read_sections(
+                gvas_data,
+                {"CharacterSaveParameterMap", "BaseCampSaveData", "GroupSaveDataMap"},
+            )
+        char_map = sections.get("CharacterSaveParameterMap", [])
+        with contextlib.redirect_stdout(sys.stderr), FArchiveReader(
+            b"", PALWORLD_TYPE_HINTS, {}, allow_nan=True
+        ) as helper:
+            camps = parse_base_camps(sections.get("BaseCampSaveData"), helper)
+            guilds = parse_guilds(sections.get("GroupSaveDataMap"), camps)
     except Exception as exc:
         # The targeted walk depends on save layout; if a future format
         # shift breaks it, fall back to parsing everything rather than
@@ -426,7 +516,17 @@ def main():
                 record_for(uid)["base"].append(pal)
                 break
 
-    out = {"players": sorted(players.values(), key=lambda r: (r["nickname"].lower(), r["uid"]))}
+    for uid, rec in players.items():
+        rec.update(player_meta.get(uid, {}))
+        rec.setdefault("lastOnline", 0)
+        rec.setdefault("lastX", None)
+        rec.setdefault("lastY", None)
+        rec.setdefault("platform", "")
+
+    out = {
+        "players": sorted(players.values(), key=lambda r: (r["nickname"].lower(), r["uid"])),
+        "guilds": guilds,
+    }
     json.dump(out, sys.stdout, separators=(",", ":"))
     return 0
 

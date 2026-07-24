@@ -130,10 +130,39 @@ export interface PlayerPals {
   party: Pal[];
   palbox: Pal[];
   base: Pal[];
+  /** Unix seconds; 0 when the save recorded none. */
+  lastOnline: number;
+  /** Where they logged off, in the same world space the map plots. */
+  lastX: number | null;
+  lastY: number | null;
+  platform: string;
+  technologyPoints: number;
+}
+
+export interface GuildMember {
+  uid: string;
+  name: string;
+}
+
+export interface Guild {
+  id: string;
+  name: string;
+  baseCampLevel: number;
+  members: GuildMember[];
+  memberCount: number;
+  bases: { x: number; y: number }[];
+}
+
+export interface GuildsResult {
+  guilds: Guild[];
+  players: PlayerPals[];
+  parsedAt: string;
+  saveModTime: string;
 }
 
 export interface PalsResult {
   players: PlayerPals[];
+  guilds: Guild[];
   parsedAt: string;
   saveModTime: string;
 }
@@ -174,4 +203,5 @@ export const api = {
   // Save-file-backed (phase 5) — throws a 400 ApiError when the server has
   // no save path configured.
   serverPals: (id: number) => request<PalsResult>(`/servers/${id}/pals`),
+  serverGuilds: (id: number) => request<GuildsResult>(`/servers/${id}/guilds`),
 };

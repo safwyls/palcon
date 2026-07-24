@@ -97,6 +97,9 @@ export function ServerSubNav({ server }: { server: Server }) {
         <NavLink to={`/servers/${server.id}/players`} className={navLinkClass}>
           Player pals
         </NavLink>
+        <NavLink to={`/servers/${server.id}/guilds`} className={navLinkClass}>
+          Guilds
+        </NavLink>
       </nav>
 
       {metricsQuery.isSuccess && (

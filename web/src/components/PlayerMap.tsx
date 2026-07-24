@@ -7,7 +7,7 @@ import {
   useTransformContext,
   useTransformInit,
 } from "react-zoom-pan-pinch";
-import { ZoomIn, ZoomOut, Maximize } from "lucide-react";
+import { Home, ZoomIn, ZoomOut, Maximize } from "lucide-react";
 import type { Player } from "../lib/api";
 import { MAP_AREAS, mapOf, worldToMapPercent, type MapArea } from "../lib/map";
 import { playerColor } from "../lib/palette";
@@ -121,8 +121,18 @@ const TEXTURE_SIZE = 4096;
  * aspect-ratio from shrinking the height once max-w-full caps the width,
  * which silently produced a non-square box in portrait regions.
  */
+export interface MapMarker {
+  id: string;
+  label: string;
+  sublabel?: string;
+  x: number;
+  y: number;
+  kind: "base" | "offline";
+}
+
 export function PlayerMap({
   players,
+  markers = [],
   area,
   selectedId,
   focusId,
@@ -131,6 +141,9 @@ export function PlayerMap({
   className,
 }: {
   players: Player[];
+  /** Save-derived overlays: guild bases and where offline players logged
+   * off. Drawn beneath live players, which are the reason for the view. */
+  markers?: MapMarker[];
   area: MapArea;
   selectedId: string | null;
   focusId: string | null;
@@ -252,6 +265,46 @@ export function PlayerMap({
                   aria-label={`Palworld map — ${MAP_AREAS[area].label}`}
                   className="absolute inset-0 h-full w-full"
                 />
+
+                {markers
+                  .filter((m) => mapOf(m.x, m.y) === area)
+                  .map((m) => {
+                    const { xPct, yPct } = worldToMapPercent(m.x, m.y, area);
+                    return (
+                      <KeepScale
+                        key={m.id}
+                        className="absolute flex"
+                        style={{
+                          left: `${Math.min(100, Math.max(0, xPct))}%`,
+                          top: `${Math.min(100, Math.max(0, yPct))}%`,
+                          transformOrigin: "0 0",
+                        }}
+                      >
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span
+                              className={cn(
+                                "flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[3px] border shadow",
+                                m.kind === "base"
+                                  ? "border-paper bg-brand-amber"
+                                  : "border-paper/70 bg-ink/60",
+                              )}
+                            >
+                              {m.kind === "base" ? (
+                                <Home className="h-2.5 w-2.5 text-ink" />
+                              ) : (
+                                <span className="h-1.5 w-1.5 rounded-full bg-paper/80" />
+                              )}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {m.label}
+                            {m.sublabel && <span className="block text-xs opacity-70">{m.sublabel}</span>}
+                          </TooltipContent>
+                        </Tooltip>
+                      </KeepScale>
+                    );
+                  })}
 
                 {playersHere.map((p) => {
                   const { xPct, yPct } = worldToMapPercent(p.location_x, p.location_y, area);

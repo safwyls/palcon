@@ -9,6 +9,7 @@ import { cn } from "../lib/utils";
 import { ServerUnreachable } from "../components/ServerUnreachable";
 import { SaveReadProgress } from "../components/SaveReadProgress";
 import { PalDetailDialog } from "../components/PalDetailDialog";
+import { SavePathSetup } from "../components/SavePathSetup";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
 
@@ -267,20 +268,7 @@ export function ServerPlayers() {
       <div className="space-y-4 p-4 lg:space-y-6 lg:p-8">
         {palsQuery.isLoading && <SaveReadProgress />}
 
-        {notConfigured && (
-          <section className="rounded-2xl border border-ink/10 bg-white/70 p-6">
-            <h2 className="font-display text-base font-bold">Set up the Pal viewer</h2>
-            <p className="mt-2 max-w-2xl text-sm text-ink/60">
-              This reads the server's save file directly, so Palcon needs to see it. Bind-mount your world save
-              folder (the one containing <code className="font-mono">Level.sav</code>) into the container{" "}
-              <span className="font-semibold">read-only</span>, then put that container path in the server's{" "}
-              <span className="font-semibold">Save path</span> (edit the server from the sidebar).
-            </p>
-            <pre className="mt-3 max-w-2xl overflow-x-auto rounded-lg bg-ink px-4 py-3 font-mono text-xs text-paper/80">
-              - /path/to/Pal/Saved/SaveGames/0/&lt;world-id&gt;:/saves/myserver:ro
-            </pre>
-          </section>
-        )}
+        {notConfigured && <SavePathSetup />}
 
         {palsQuery.isError && !notConfigured && (
           infoQuery.isError ? <ServerUnreachable /> : (

@@ -24,6 +24,11 @@ import (
 //go:embed extract_pals.py
 var extractScript []byte
 
+// extract_pals.py imports this, so both have to land in the data dir.
+//
+//go:embed guilds.py
+var guildsModule []byte
+
 // ErrNotConfigured is returned for servers with no save path set.
 var ErrNotConfigured = errors.New("no save path configured for this server")
 
@@ -61,10 +66,39 @@ type PlayerPals struct {
 	Party    []Pal  `json:"party"`
 	Palbox   []Pal  `json:"palbox"`
 	Base     []Pal  `json:"base"`
+
+	// From Players/<uid>.sav. LastOnline is unix seconds, 0 when the save
+	// didn't record one; LastX/LastY are world coordinates in the same
+	// space the live map plots, so an offline player can still be placed.
+	LastOnline       int64    `json:"lastOnline"`
+	LastX            *float64 `json:"lastX"`
+	LastY            *float64 `json:"lastY"`
+	Platform         string   `json:"platform"`
+	TechnologyPoints int      `json:"technologyPoints"`
+}
+
+type GuildMember struct {
+	UID  string `json:"uid"`
+	Name string `json:"name"`
+}
+
+type GuildBase struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+type Guild struct {
+	ID            string        `json:"id"`
+	Name          string        `json:"name"`
+	BaseCampLevel int           `json:"baseCampLevel"`
+	Members       []GuildMember `json:"members"`
+	MemberCount   int           `json:"memberCount"`
+	Bases         []GuildBase   `json:"bases"`
 }
 
 type Result struct {
 	Players []PlayerPals `json:"players"`
+	Guilds  []Guild      `json:"guilds"`
 	// ParsedAt is when the extraction ran; SaveModTime is the Level.sav
 	// mtime it was parsed from — shown in the UI so "how fresh is this"
 	// is never a mystery (saves only change on the game's autosave cycle).
@@ -94,6 +128,9 @@ func NewReader(dir string) (*Reader, error) {
 	scriptPath := filepath.Join(dir, "extract_pals.py")
 	if err := os.WriteFile(scriptPath, extractScript, 0o644); err != nil {
 		return nil, fmt.Errorf("writing extractor script: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "guilds.py"), guildsModule, 0o644); err != nil {
+		return nil, fmt.Errorf("writing guild decoder: %w", err)
 	}
 	return &Reader{scriptPath: scriptPath, cache: make(map[string]cacheEntry)}, nil
 }

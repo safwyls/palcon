@@ -1,13 +1,14 @@
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Player } from "../lib/api";
 import { DEFAULT_MAP_AREA, MAP_AREAS, mapOf, type MapArea } from "../lib/map";
 import { playerColor } from "../lib/palette";
 import { cn } from "../lib/utils";
-import { PlayerMap } from "../components/PlayerMap";
+import { PlayerMap, type MapMarker } from "../components/PlayerMap";
 import { MapAreaToggle } from "../components/MapAreaToggle";
 import { ServerUnreachable } from "../components/ServerUnreachable";
+import { lastSeenLabel } from "./ServerGuilds";
 
 /** Ticks once a second so the "updated Xs ago" chip stays honest. */
 function UpdatedAgo({ timestamp }: { timestamp: number }) {
@@ -72,6 +73,50 @@ export function ServerMap() {
 
   const players = playersQuery.data ?? [];
 
+  // Save-derived overlay. Optional: a server with no save path configured
+  // simply gets no markers, so the map still works exactly as before.
+  const saveQuery = useQuery({
+    queryKey: ["server-guilds", id],
+    queryFn: () => api.serverGuilds(id),
+    retry: false,
+    refetchInterval: 5 * 60_000,
+  });
+
+  const markers = useMemo<MapMarker[]>(() => {
+    const data = saveQuery.data;
+    if (!data) return [];
+    const online = new Set(players.map((p) => p.name.toLowerCase()));
+    const out: MapMarker[] = [];
+
+    for (const guild of data.guilds) {
+      guild.bases.forEach((b, i) => {
+        out.push({
+          id: `base-${guild.id}-${i}`,
+          label: guild.name || "Unnamed guild",
+          sublabel: `Base level ${guild.baseCampLevel}`,
+          x: b.x,
+          y: b.y,
+          kind: "base",
+        });
+      });
+    }
+
+    for (const p of data.players) {
+      // Someone connected right now is already drawn from live data, at
+      // their actual position rather than where they last logged off.
+      if (!p.lastX || !p.lastY || online.has(p.nickname.toLowerCase())) continue;
+      out.push({
+        id: `offline-${p.uid}`,
+        label: p.nickname || "Unknown player",
+        sublabel: p.lastOnline ? `Last seen ${lastSeenLabel(p.lastOnline)}` : "Offline",
+        x: p.lastX,
+        y: p.lastY,
+        kind: "offline",
+      });
+    }
+    return out;
+  }, [saveQuery.data, players]);
+
   function selectPlayer(p: Player) {
     setSelectedId(p.playerId);
     const playerArea = mapOf(p.location_x, p.location_y);
@@ -108,6 +153,7 @@ export function ServerMap() {
         <div className="absolute inset-0">
           <PlayerMap
             players={players}
+            markers={markers}
             area={area}
             selectedId={selectedId}
             focusId={focusId}
