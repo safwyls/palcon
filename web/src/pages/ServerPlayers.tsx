@@ -1,60 +1,103 @@
+import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { ChevronDown, Search } from "lucide-react";
 import { api, ApiError, type Pal, type PlayerPals } from "../lib/api";
 import { initials, playerColor } from "../lib/palette";
+import { elementColor, palEntry, palIconUrl, palName, passiveName, rarityTier } from "../lib/paldex";
+import { cn } from "../lib/utils";
 import { ServerUnreachable } from "../components/ServerUnreachable";
+import { SaveReadProgress } from "../components/SaveReadProgress";
 import { Badge } from "../components/ui/badge";
-
-function displayName(pal: Pal): string {
-  if (pal.nickname) return pal.nickname;
-  return pal.isBoss ? pal.characterId.replace(/^BOSS_/i, "") : pal.characterId;
-}
+import { Input } from "../components/ui/input";
 
 function PalCard({ pal }: { pal: Pal }) {
+  const species = palName(pal.characterId);
+  const entry = palEntry(pal.characterId);
+  const elements = (entry?.elements ?? []).slice(0, 2);
+  const tier = rarityTier(entry?.rarity ?? 0);
+
   return (
-    <div className="rounded-xl border border-ink/10 bg-white/70 p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+    <div className="flex gap-3 rounded-xl border border-ink/10 bg-white/70 p-3">
+      <div
+        className={cn(
+          "flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border",
+          tier === "legendary"
+            ? "border-legendary/40 bg-legendary/10"
+            : tier === "rare"
+              ? "border-pal-blue/40 bg-pal-blue/10"
+              : "border-ink/10 bg-ink/5",
+        )}
+      >
+        <img
+          src={palIconUrl(pal.characterId)}
+          alt=""
+          className="h-10 w-10 object-contain"
+          loading="lazy"
+          // A pal added by a game update has no vendored icon; the frame
+          // alone reads fine, so drop the broken image rather than show it.
+          onError={(e) => {
+            e.currentTarget.style.visibility = "hidden";
+          }}
+        />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
           <p className="truncate text-sm font-semibold text-foreground">
-            {displayName(pal)}
+            {pal.nickname || species}
             {pal.gender && (
               <span className={pal.gender === "female" ? "ml-1 text-brand-red/70" : "ml-1 text-pal-blue/70"}>
                 {pal.gender === "female" ? "♀" : "♂"}
               </span>
             )}
           </p>
-          {pal.nickname && <p className="truncate font-mono text-xs text-ink/40">{pal.characterId}</p>}
+          <span className="shrink-0 rounded-full bg-ink px-2 py-0.5 font-mono text-xs font-bold text-paper">
+            Lv.{pal.level}
+          </span>
         </div>
-        <span className="shrink-0 rounded-full bg-ink px-2 py-0.5 font-mono text-xs font-bold text-paper">
-          Lv.{pal.level}
-        </span>
-      </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-1">
-        {pal.isBoss && (
-          <Badge variant="outline" className="border-legendary/40 bg-legendary/10 px-1.5 py-0 text-[10px] text-legendary">
-            Alpha
-          </Badge>
-        )}
-        {pal.isLucky && (
-          <Badge variant="outline" className="border-brand-amber/40 bg-brand-amber/10 px-1.5 py-0 text-[10px] text-brand-amber">
-            Lucky
-          </Badge>
-        )}
-        <span className="font-mono text-[11px] text-ink/40" title="IVs: HP / Attack / Defense">
-          IV {pal.talentHp}/{pal.talentShot}/{pal.talentDefense}
-        </span>
-      </div>
+        <p className="truncate text-xs text-ink/45">{pal.nickname ? species : ""}&nbsp;</p>
 
-      {pal.passives.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
-          {pal.passives.map((p) => (
-            <span key={p} className="rounded-full bg-ink/5 px-1.5 py-0.5 font-mono text-[10px] text-ink/50">
-              {p}
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          {elements.map((el) => (
+            <span
+              key={el}
+              className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+              style={{ backgroundColor: `${elementColor(el)}22`, color: elementColor(el) }}
+            >
+              {el}
             </span>
           ))}
+          {pal.isBoss && (
+            <Badge variant="outline" className="border-legendary/40 bg-legendary/10 px-1.5 py-0 text-[10px] text-legendary">
+              Alpha
+            </Badge>
+          )}
+          {pal.isLucky && (
+            <Badge variant="outline" className="border-brand-amber/40 bg-brand-amber/10 px-1.5 py-0 text-[10px] text-brand-amber">
+              Lucky
+            </Badge>
+          )}
+          <span className="font-mono text-[10px] text-ink/40" title="IVs: HP / Attack / Defense">
+            {pal.talentHp}/{pal.talentShot}/{pal.talentDefense}
+          </span>
         </div>
-      )}
+
+        {pal.passives.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {pal.passives.map((p) => (
+              <span
+                key={p}
+                title={p}
+                className="rounded-full bg-ink/5 px-1.5 py-0.5 text-[10px] text-ink/60"
+              >
+                {passiveName(p)}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -66,7 +109,7 @@ function PalGroup({ title, pals }: { title: string; pals: Pal[] }) {
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/40">
         {title} <span className="font-mono text-ink/30">({pals.length})</span>
       </p>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {pals.map((pal) => (
           <PalCard key={pal.instanceId} pal={pal} />
         ))}
@@ -75,12 +118,42 @@ function PalGroup({ title, pals }: { title: string; pals: Pal[] }) {
   );
 }
 
-function PlayerSection({ player }: { player: PlayerPals }) {
+function PlayerSection({ player, query }: { player: PlayerPals; query: string }) {
+  const [open, setOpen] = useState(true);
   const color = playerColor(player.uid);
-  const total = player.party.length + player.palbox.length + player.base.length;
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return player;
+    const q = query.trim().toLowerCase();
+    const match = (pal: Pal) =>
+      pal.nickname.toLowerCase().includes(q) ||
+      pal.characterId.toLowerCase().includes(q) ||
+      palName(pal.characterId).toLowerCase().includes(q) ||
+      pal.passives.some((p) => passiveName(p).toLowerCase().includes(q) || p.toLowerCase().includes(q));
+    return {
+      ...player,
+      party: player.party.filter(match),
+      palbox: player.palbox.filter(match),
+      base: player.base.filter(match),
+    };
+  }, [player, query]);
+
+  const total = filtered.party.length + filtered.palbox.length + filtered.base.length;
+  const owned = player.party.length + player.palbox.length + player.base.length;
+
+  // A search that excludes everyone's pals should hide the player entirely
+  // rather than leave a row of empty sections to scroll past.
+  if (query.trim() && total === 0) return null;
+
+  const expanded = query.trim() ? true : open;
+
   return (
     <section className="overflow-hidden rounded-2xl border border-ink/10 bg-white/70">
-      <div className="flex items-center gap-3 border-b border-ink/10 px-5 py-4">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-ink/5"
+        aria-expanded={expanded}
+      >
         <span
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-display text-sm font-bold"
           style={{ backgroundColor: `${color}33`, color }}
@@ -90,16 +163,23 @@ function PlayerSection({ player }: { player: PlayerPals }) {
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-display text-base font-bold">{player.nickname || player.uid}</h2>
           <p className="font-mono text-xs text-ink/40">
-            Lv.{player.level} · {total} {total === 1 ? "pal" : "pals"}
+            Lv.{player.level} · {query.trim() ? `${total} of ${owned}` : owned}{" "}
+            {owned === 1 && !query.trim() ? "pal" : "pals"}
           </p>
         </div>
-      </div>
-      <div className="space-y-5 p-5">
-        <PalGroup title="Party" pals={player.party} />
-        <PalGroup title="Palbox" pals={player.palbox} />
-        <PalGroup title="At base" pals={player.base} />
-        {total === 0 && <p className="text-sm text-muted-foreground">No pals owned yet.</p>}
-      </div>
+        <ChevronDown
+          className={cn("h-4 w-4 shrink-0 text-ink/40 transition-transform", expanded && "rotate-180")}
+        />
+      </button>
+
+      {expanded && (
+        <div className="space-y-5 border-t border-ink/10 p-5">
+          <PalGroup title="Party" pals={filtered.party} />
+          <PalGroup title="Palbox" pals={filtered.palbox} />
+          <PalGroup title="At base" pals={filtered.base} />
+          {total === 0 && <p className="text-sm text-muted-foreground">No pals owned yet.</p>}
+        </div>
+      )}
     </section>
   );
 }
@@ -114,6 +194,7 @@ function agoLabel(iso: string): string {
 export function ServerPlayers() {
   const { serverID } = useParams();
   const id = Number(serverID);
+  const [query, setQuery] = useState("");
 
   const serverQuery = useQuery({ queryKey: ["server", id], queryFn: () => api.getServer(id) });
   const infoQuery = useQuery({ queryKey: ["server-info", id], queryFn: () => api.serverInfo(id), retry: false });
@@ -121,8 +202,6 @@ export function ServerPlayers() {
     queryKey: ["server-pals", id],
     queryFn: () => api.serverPals(id),
     retry: false,
-    // The backend re-parses only when Level.sav's mtime changes, so polling
-    // is cheap; ~the game's autosave cadence.
     refetchInterval: 60_000,
   });
 
@@ -131,6 +210,18 @@ export function ServerPlayers() {
 
   const notConfigured =
     palsQuery.isError && palsQuery.error instanceof ApiError && palsQuery.error.status === 400;
+  const players = palsQuery.data?.players ?? [];
+  const visible = players.filter((p) => {
+    if (!query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    return [...p.party, ...p.palbox, ...p.base].some(
+      (pal) =>
+        pal.nickname.toLowerCase().includes(q) ||
+        pal.characterId.toLowerCase().includes(q) ||
+        palName(pal.characterId).toLowerCase().includes(q) ||
+        pal.passives.some((s) => passiveName(s).toLowerCase().includes(q) || s.toLowerCase().includes(q)),
+    );
+  });
 
   return (
     <div>
@@ -149,9 +240,7 @@ export function ServerPlayers() {
       </header>
 
       <div className="space-y-4 p-4 lg:space-y-6 lg:p-8">
-        {palsQuery.isLoading && (
-          <p className="text-sm text-muted-foreground">Reading save file — first parse of a large world can take a moment...</p>
-        )}
+        {palsQuery.isLoading && <SaveReadProgress />}
 
         {notConfigured && (
           <section className="rounded-2xl border border-ink/10 bg-white/70 p-6">
@@ -174,12 +263,34 @@ export function ServerPlayers() {
           )
         )}
 
-        {palsQuery.data &&
-          (palsQuery.data.players.length > 0 ? (
-            palsQuery.data.players.map((player) => <PlayerSection key={player.uid} player={player} />)
-          ) : (
+        {palsQuery.isSuccess && players.length > 0 && (
+          <div className="relative max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/30" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search pals by name, species or passive…"
+              className="pl-9"
+            />
+          </div>
+        )}
+
+        {palsQuery.isSuccess &&
+          (players.length === 0 ? (
             <p className="text-sm text-muted-foreground">No players found in this save yet.</p>
+          ) : visible.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No pals match "{query}".</p>
+          ) : (
+            visible.map((player) => <PlayerSection key={player.uid} player={player} query={query} />)
           ))}
+
+        {palsQuery.isSuccess && players.length > 0 && (
+          <p className="pt-2 text-xs text-ink/35">
+            Pal artwork and names © Pocketpair, Inc. Icons and localisation data vendored from{" "}
+            <span className="font-mono">palworld-server-manager</span> and{" "}
+            <span className="font-mono">palworld-save-pal</span>.
+          </p>
+        )}
       </div>
     </div>
   );

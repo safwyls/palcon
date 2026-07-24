@@ -51,3 +51,18 @@ body {
 .sphere-ring {
   background: conic-gradient(var(--ring-color, #4A9D7C) 0 50%, #2B2420 50% 100%);
 }
+
+/* Indeterminate sweep for the save-read progress bar — parsing reports no
+   real progress, so the bar shows activity rather than a made-up amount. */
+@keyframes saveread {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[saveread_1\.4s_ease-in-out_infinite\] {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
+}
