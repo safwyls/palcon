@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -39,6 +41,34 @@ func (s *Server) containerForRequest(w http.ResponseWriter, r *http.Request) (st
 	return srv.ContainerName, true
 }
 
+// saveBeforeStopping asks the game to write its world to disk before the
+// container goes down.
+//
+// `docker stop` sends SIGTERM and then SIGKILL once the grace period runs
+// out, and Palworld server images commonly don't handle SIGTERM at all — so
+// the process is killed outright and anything since the last autosave is
+// lost. Saving first makes that harmless: the kill costs nothing but the
+// process itself.
+//
+// Best-effort by design. A server that's already unresponsive can't save,
+// and that must not stop us from stopping the container — which is often
+// exactly why someone is reaching for the button.
+func (s *Server) saveBeforeStopping(r *http.Request, container, actor string) {
+	client, _, err := s.clientForServerID(r)
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+
+	if err := client.Save(ctx); err != nil {
+		s.logger.Warn("could not save world before stopping; stopping anyway",
+			"container", container, "user", actor, "error", err)
+		return
+	}
+	s.logger.Info("saved world before stopping", "container", container, "user", actor)
+}
+
 func (s *Server) handleContainerStatus(w http.ResponseWriter, r *http.Request) {
 	name, ok := s.containerForRequest(w, r)
 	if !ok {
@@ -73,8 +103,10 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 	case "start":
 		err = s.docker.Start(r.Context(), name)
 	case "stop":
+		s.saveBeforeStopping(r, name, actor)
 		err = s.docker.Stop(r.Context(), name)
 	case "restart":
+		s.saveBeforeStopping(r, name, actor)
 		err = s.docker.Restart(r.Context(), name)
 	default:
 		writeError(w, http.StatusBadRequest, "unknown action")

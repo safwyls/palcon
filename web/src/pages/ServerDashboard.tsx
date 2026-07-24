@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsFetching, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { api, type Player } from "../lib/api";
+import { cn } from "../lib/utils";
 import { PlayerList } from "../components/PlayerList";
 import { ServerMetrics } from "../components/ServerMetrics";
 import { ServerPower } from "../components/ServerPower";
@@ -31,6 +33,23 @@ export function ServerDashboard() {
   });
 
   const invalidatePlayers = () => queryClient.invalidateQueries({ queryKey: ["server-players", id] });
+
+  // Everything the dashboard shows, refetched together. Each panel polls on
+  // its own schedule, so without this the only way to force a fresh read was
+  // reloading the page.
+  const dashboardQueries = [
+    "server-info",
+    "server-players",
+    "server-metrics",
+    "server-metrics-history",
+    "server-settings",
+    "container",
+  ];
+  const refreshAll = () =>
+    dashboardQueries.forEach((key) => queryClient.invalidateQueries({ queryKey: [key, id] }));
+  const fetching = useIsFetching({
+    predicate: (q) => q.queryKey[1] === id && dashboardQueries.includes(String(q.queryKey[0])),
+  });
 
   const save = useMutation({
     mutationFn: () => api.save(id),
@@ -82,21 +101,32 @@ export function ServerDashboard() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            className={`${headerButton} border border-ink/15 bg-white text-ink hover:bg-ink/5`}
+            onClick={refreshAll}
+            disabled={fetching > 0}
+            title="Refresh dashboard"
+            aria-label="Refresh dashboard"
+            className="rounded-xl border border-ink/15 bg-white p-2.5 text-ink/60 transition hover:bg-ink/5 hover:text-ink disabled:opacity-50"
+          >
+            <RefreshCw className={cn("h-4 w-4", fetching > 0 && "animate-spin")} />
+          </button>
+          <button
+            className={`${headerButton} border border-ink/15 bg-white text-ink hover:bg-ink/5 disabled:opacity-40`}
             onClick={() => save.mutate()}
-            disabled={save.isPending}
+            disabled={save.isPending || infoQuery.isError}
           >
             {save.isPending ? "Saving..." : "Save world"}
           </button>
           <button
-            className={`${headerButton} bg-brand-red text-paper hover:brightness-110`}
+            className={`${headerButton} bg-brand-red text-paper hover:brightness-110 disabled:opacity-40`}
             onClick={() => setBroadcastOpen(true)}
+            disabled={infoQuery.isError}
           >
             Broadcast
           </button>
           <button
-            className={`${headerButton} bg-ink text-paper hover:bg-ink-light`}
+            className={`${headerButton} bg-ink text-paper hover:bg-ink-light disabled:opacity-40`}
             onClick={() => setShutdownOpen(true)}
+            disabled={infoQuery.isError}
           >
             Shut down
           </button>
@@ -104,7 +134,13 @@ export function ServerDashboard() {
       </header>
 
       {infoQuery.isError ? (
-        <ServerUnreachable />
+        // Power controls stay put when the server is unreachable — a
+        // stopped server is precisely when you need the Start button, and
+        // rendering only the unreachable art left no way to bring it back.
+        <div className="space-y-4 p-4 lg:space-y-6 lg:p-8">
+          <ServerPower serverId={id} />
+          <ServerUnreachable />
+        </div>
       ) : (
         <div className="space-y-4 p-4 lg:space-y-6 lg:p-8">
           <ServerPower serverId={id} />

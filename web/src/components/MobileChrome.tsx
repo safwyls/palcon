@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { LogOut, MoreVertical, Pencil, Plus, Power, Save, Trash2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { LogOut, MoreVertical, Pencil, Plus, Power, RefreshCw, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, type Server } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -22,6 +22,7 @@ const segmentClass = ({ isActive }: { isActive: boolean }) =>
  * and an overflow menu carrying the actions that have no other mobile home. */
 export function MobileTopBar({ server }: { server: Server | null }) {
   const { username, logout } = useAuth();
+  const queryClient = useQueryClient();
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -88,6 +89,28 @@ export function MobileTopBar({ server }: { server: Server | null }) {
               <div className="absolute right-0 top-10 z-30 w-52 overflow-hidden rounded-xl border border-ink/10 bg-paper text-ink shadow-lg">
                 {server && (
                   <>
+                    {/* Mobile has no page header, so the dashboard's refresh
+                        lives here. */}
+                    <button
+                      className={menuItem}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        for (const key of [
+                          "server-info",
+                          "server-players",
+                          "server-metrics",
+                          "server-metrics-history",
+                          "server-settings",
+                          "container",
+                          "server-pals",
+                          "server-guilds",
+                        ]) {
+                          queryClient.invalidateQueries({ queryKey: [key, server.id] });
+                        }
+                      }}
+                    >
+                      <RefreshCw className="h-4 w-4 text-ink/50" /> Refresh
+                    </button>
                     <button
                       className={menuItem}
                       onClick={() => {
