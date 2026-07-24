@@ -5,7 +5,7 @@ import { api, type Player } from "../lib/api";
 import { DEFAULT_MAP_AREA, MAP_AREAS, mapOf, type MapArea } from "../lib/map";
 import { playerColor } from "../lib/palette";
 import { cn } from "../lib/utils";
-import { PlayerMap, type MapMarker } from "../components/PlayerMap";
+import { PlayerMap, mapMarkerId, type MapMarker } from "../components/PlayerMap";
 import { MapAreaToggle } from "../components/MapAreaToggle";
 import { ServerUnreachable } from "../components/ServerUnreachable";
 import { lastSeenLabel } from "./ServerGuilds";
@@ -121,7 +121,7 @@ export function ServerMap() {
     setSelectedId(p.playerId);
     const playerArea = mapOf(p.location_x, p.location_y);
     if (playerArea !== area) setArea(playerArea);
-    setFocusId(p.playerId);
+    setFocusId(`player-marker-${p.playerId}`);
     setSheetOpen(false);
   }
 
@@ -136,6 +136,22 @@ export function ServerMap() {
     setSearchParams({}, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusParam, players.length]);
+
+  // "View on map" from the Guilds page arrives as ?base=<marker id>, with
+  // coordinates so the right area can be selected before the marker exists.
+  const baseParam = searchParams.get("base");
+  const baseX = Number(searchParams.get("bx"));
+  const baseY = Number(searchParams.get("by"));
+  useEffect(() => {
+    if (!baseParam || markers.length === 0) return;
+    if (Number.isFinite(baseX) && Number.isFinite(baseY)) {
+      const targetArea = mapOf(baseX, baseY);
+      if (targetArea !== area) setArea(targetArea);
+    }
+    setFocusId(mapMarkerId(baseParam));
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseParam, markers.length]);
 
   if (serverQuery.isLoading) return <p className="p-6 text-muted-foreground">Loading...</p>;
   if (serverQuery.isError || !serverQuery.data) return <p className="p-6 text-destructive">Server not found.</p>;

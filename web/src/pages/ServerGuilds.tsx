@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Home, Users } from "lucide-react";
 import { api, ApiError, type Guild, type PlayerPals } from "../lib/api";
@@ -18,10 +18,11 @@ export function lastSeenLabel(unixSeconds: number): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-function GuildCard({ guild, players }: { guild: Guild; players: PlayerPals[] }) {
+function GuildCard({ guild, players, serverId }: { guild: Guild; players: PlayerPals[]; serverId: number }) {
+  const navigate = useNavigate();
   const byUid = new Map(players.map((p) => [p.uid, p]));
-  // Guild member uids and player-save uids are written with different byte
-  // orders, so fall back to matching on name when the id lookup misses.
+  // Uids match the player saves, so this normally hits directly. The name
+  // fallback covers a member with no player save of their own.
   const byName = new Map(players.map((p) => [p.nickname.toLowerCase(), p]));
   const resolve = (uid: string, name: string) => byUid.get(uid) ?? byName.get(name.toLowerCase());
 
@@ -73,16 +74,41 @@ function GuildCard({ guild, players }: { guild: Guild; players: PlayerPals[] }) 
 
         {guild.bases.length > 0 && (
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/40">Bases</p>
-            <div className="flex flex-wrap gap-2">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/40">
+              Bases <span className="font-mono text-ink/30">({guild.bases.length})</span>
+            </p>
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
               {guild.bases.map((b, i) => (
-                <span
+                <div
                   key={i}
-                  className="flex items-center gap-1.5 rounded-lg border border-ink/10 bg-ink/[0.03] px-2.5 py-1.5 font-mono text-xs text-ink/60"
+                  className="flex items-center gap-3 rounded-xl border border-ink/10 bg-white/60 p-2.5"
                 >
-                  <Home className="h-3.5 w-3.5 text-brand-amber" />
-                  {MAP_AREAS[mapOf(b.x, b.y)].label} · {Math.round(b.x)}, {Math.round(b.y)}
-                </span>
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-amber/15">
+                    <Home className="h-4 w-4 text-brand-amber" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      Base {i + 1}
+                      <span className="ml-1.5 text-xs font-normal text-ink/45">
+                        {MAP_AREAS[mapOf(b.x, b.y)].label}
+                      </span>
+                    </p>
+                    <p className="font-mono text-[11px] text-ink/40">
+                      {Math.round(b.x)}, {Math.round(b.y)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() =>
+                      navigate(
+                        `/servers/${serverId}/map?base=${encodeURIComponent(`base-${guild.id}-${i}`)}` +
+                          `&bx=${b.x}&by=${b.y}`,
+                      )
+                    }
+                    className="shrink-0 text-xs font-semibold text-pal-blue hover:underline"
+                  >
+                    View on map
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -138,7 +164,7 @@ export function ServerGuilds() {
           (guilds.length === 0 ? (
             <p className="text-sm text-muted-foreground">No guilds in this save yet.</p>
           ) : (
-            guilds.map((g) => <GuildCard key={g.id} guild={g} players={players} />)
+            guilds.map((g) => <GuildCard key={g.id} guild={g} players={players} serverId={id} />)
           ))}
       </div>
     </div>

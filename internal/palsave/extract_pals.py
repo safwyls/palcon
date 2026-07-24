@@ -347,7 +347,14 @@ def parse_base_camps(entries, reader_source):
     return by_guild
 
 
-def parse_guilds(entries, base_camps):
+def parse_guilds(entries, base_camps, player_names):
+    """Assemble guilds, naming members from the player saves.
+
+    Membership comes from the guild's character handles (reliable across
+    versions); names come from player_names, which is built from
+    Players/<uid>.sav. Anyone missing there falls back to a name carried in
+    the guild record itself, and finally to the bare uid.
+    """
     out = []
     for entry in entries or []:
         group_type = text(entry.get("value", {}), "GroupType")
@@ -359,6 +366,17 @@ def parse_guilds(entries, base_camps):
         guild = decode_guild(raw)
         if not guild:
             continue
+
+        spare = [n for n in guild.pop("spareNames", []) if n != guild["name"]]
+        members = []
+        for uid in guild.pop("memberUids", []):
+            name = player_names.get(uid, "")
+            if not name and spare:
+                name = spare.pop(0)
+            members.append({"uid": uid, "name": name or uid[:8]})
+
+        guild["members"] = members
+        guild["memberCount"] = len(members)
         guild["bases"] = base_camps.get(guild["id"], [])
         out.append(guild)
     out.sort(key=lambda g: (-len(g["members"]), g["name"].lower()))
@@ -438,6 +456,7 @@ def main():
     with open(level_path, "rb") as f:
         gvas_data = decompress_sav(f.read())
     guilds = []
+    guild_entries, camps = None, {}
     try:
         with contextlib.redirect_stdout(sys.stderr):
             sections = read_sections(
@@ -449,7 +468,7 @@ def main():
             b"", PALWORLD_TYPE_HINTS, {}, allow_nan=True
         ) as helper:
             camps = parse_base_camps(sections.get("BaseCampSaveData"), helper)
-            guilds = parse_guilds(sections.get("GroupSaveDataMap"), camps)
+            guild_entries = sections.get("GroupSaveDataMap")
     except Exception as exc:
         # The targeted walk depends on save layout; if a future format
         # shift breaks it, fall back to parsing everything rather than
@@ -522,6 +541,11 @@ def main():
         rec.setdefault("lastX", None)
         rec.setdefault("lastY", None)
         rec.setdefault("platform", "")
+
+    player_names = {uid: rec["nickname"] for uid, rec in players.items() if rec["nickname"]}
+    if guild_entries:
+        with contextlib.redirect_stdout(sys.stderr):
+            guilds = parse_guilds(guild_entries, camps, player_names)
 
     out = {
         "players": sorted(players.values(), key=lambda r: (r["nickname"].lower(), r["uid"])),

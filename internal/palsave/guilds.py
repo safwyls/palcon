@@ -6,10 +6,14 @@ insert fields mid-record and append trailing data, so it fails outright
 ("could not read 16 bytes for uuid") — the same class of breakage that
 affected character records.
 
-Only the leading fields have stayed put across versions, so this reads
-those positionally and then locates the member list *structurally*, by the
-shape of its records, rather than trusting a byte offset that the next
-patch may move again.
+Only the leading fields have stayed put across versions, so membership is
+taken from individual_character_handle_ids, which sits before everything
+that shifts: one entry per character in the guild, with a non-zero player
+uid for players and a zero one for pals. Those uids match the ones in
+Players/<uid>.sav, so names resolve from data we already read.
+
+The guild's own name still lives past the shifting region and is found by
+shape rather than offset.
 """
 
 import string
@@ -45,36 +49,29 @@ def _read_string(buf, off, max_len=128):
     return text, off + 4 + n
 
 
-def _scan_members(buf, start):
-    """Find the member list: [guid][i64][name] repeated.
+def _scan_names(buf, start):
+    """Collect player names the guild record carries after its own name.
 
-    Scanned rather than read at a fixed offset because the number of bytes
-    between the guild name and this list has changed between game versions.
+    Only a fallback: names normally come from the player saves, keyed by
+    uid. This covers anyone missing from there — and unlike membership,
+    getting a name wrong costs a label, not a member.
 
-    The i64 here is not a wall-clock time — it reads as roughly a week in
-    ticks, i.e. elapsed world time rather than a date — so it isn't
-    validated or surfaced. Real "last seen" comes from Players/<uid>.sav,
-    which stores a genuine FDateTime. Validation therefore rests on the
-    name: a correctly length-prefixed, null-terminated, printable string is
-    unlikely to appear by chance 24 bytes into unrelated data, and a false
-    match would have to repeat to beat a real run.
+    Deliberately not tied to record boundaries. This previously walked
+    [guid][i64][name] contiguously and found exactly one member on a real
+    save: newer formats pad between records, so the second read landed on
+    padding and the loop stopped. Membership no longer depends on it.
     """
-    best = []
+    names = []
     off = start
-    while off + 28 <= len(buf):
-        probe = off
-        found = []
-        while probe + 28 <= len(buf):
-            nxt = _read_string(buf, probe + 24, max_len=64)
-            if nxt is None:
-                break
-            name, after = nxt
-            found.append({"uid": str(_guid(buf, probe)), "name": name})
-            probe = after
-        if len(found) > len(best):
-            best = found
+    while off < len(buf):
+        got = _read_string(buf, off, max_len=64)
+        if got:
+            name, after = got
+            names.append(name)
+            off = after
+            continue
         off += 1
-    return best
+    return names
 
 
 def _guid(buf, off):
@@ -100,10 +97,19 @@ def decode_guild(raw):
             return None
         _admin_key, pos = got
 
-        member_count = _u32(buf, pos)
+        # individual_character_handle_ids: one entry per character in the
+        # guild, each two GUIDs (owning player uid, then character instance
+        # id). A pal's owner uid is all zeroes, so the non-zero ones are
+        # exactly the member list — and this sits ahead of every field the
+        # newer format moves around.
+        handle_count = _u32(buf, pos)
         pos += 4
-        # Each handle is two GUIDs (player uid + character instance id).
-        pos += member_count * 32
+        member_uids = []
+        for i in range(handle_count):
+            raw_uid = buf[pos + i * 32 : pos + i * 32 + 16]
+            if len(raw_uid) == 16 and any(raw_uid):
+                member_uids.append(str(_guid(buf, pos + i * 32)))
+        pos += handle_count * 32
         if pos > len(buf):
             return None
 
@@ -117,7 +123,8 @@ def decode_guild(raw):
     except Exception:
         return None
 
-    # From here the layout shifts between versions, so find things by shape.
+    # From here the layout shifts between versions, so find the guild's own
+    # name by shape rather than offset.
     name_hit = None
     probe = pos
     while probe < len(buf) and name_hit is None:
@@ -126,14 +133,14 @@ def decode_guild(raw):
             name_hit = got
             break
         probe += 1
-    guild_name = name_hit[0] if name_hit else ""
-    members = _scan_members(buf, name_hit[1] if name_hit else pos)
 
     return {
         "id": str(group_id),
-        "name": guild_name,
+        "name": name_hit[0] if name_hit else "",
         "baseCampLevel": base_camp_level,
         "baseIds": base_ids,
-        "members": members,
-        "memberCount": len(members),
+        "memberUids": member_uids,
+        # Names in record order, used only to label uids the player saves
+        # don't cover.
+        "spareNames": _scan_names(buf, name_hit[1] if name_hit else pos),
     }

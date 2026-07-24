@@ -19,6 +19,11 @@ function markerId(playerId: string) {
   return `player-marker-${playerId}`;
 }
 
+/** DOM id for a save-derived marker, so it can be zoomed to like a player. */
+export function mapMarkerId(id: string) {
+  return `map-marker-${id}`;
+}
+
 const MAX_SCALE = 12;
 
 // Rendered inside <TransformWrapper> so useControls() can reach its pan/zoom
@@ -39,6 +44,7 @@ function FocusOnPlayer({
   settleSignal,
   onDone,
 }: {
+  /** DOM id of the marker to zoom to — a player pin or a base marker. */
   focusId: string | null;
   settleSignal: number;
   onDone: () => void;
@@ -47,7 +53,7 @@ function FocusOnPlayer({
 
   useEffect(() => {
     if (!focusId) return;
-    const raf = requestAnimationFrame(() => zoomToElement(markerId(focusId), 4, 500));
+    const raf = requestAnimationFrame(() => zoomToElement(focusId, 4, 500));
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId, settleSignal]);
@@ -273,6 +279,7 @@ export function PlayerMap({
                     return (
                       <KeepScale
                         key={m.id}
+                        id={mapMarkerId(m.id)}
                         className="absolute flex"
                         style={{
                           left: `${Math.min(100, Math.max(0, xPct))}%`,
