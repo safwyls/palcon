@@ -47,7 +47,18 @@ function PalCard({ pal }: { pal: Pal }) {
           <p className="truncate text-sm font-semibold text-foreground">
             {pal.nickname || species}
             {pal.gender && (
-              <span className={pal.gender === "female" ? "ml-1 text-brand-red/70" : "ml-1 text-pal-blue/70"}>
+              // Bumped well past the surrounding text: these glyphs draw
+              // small for their font size, so at 14px and 70% opacity they
+              // were barely visible.
+              <span
+                className={cn(
+                  "ml-1 align-middle text-lg font-bold leading-none",
+                  pal.gender === "female" ? "text-brand-red" : "text-pal-blue",
+                )}
+                title={pal.gender === "female" ? "Female" : "Male"}
+                aria-label={pal.gender === "female" ? "Female" : "Male"}
+                role="img"
+              >
                 {pal.gender === "female" ? "♀" : "♂"}
               </span>
             )}
