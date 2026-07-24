@@ -6,6 +6,7 @@ import { initials, playerColor } from "../lib/palette";
 import { mapOf, MAP_AREAS } from "../lib/map";
 import { ServerUnreachable } from "../components/ServerUnreachable";
 import { SaveReadProgress } from "../components/SaveReadProgress";
+import { SaveUpdatingBanner } from "../components/SaveUpdatingBanner";
 import { SavePathSetup } from "../components/SavePathSetup";
 
 /** Reads as "3d ago"; blank when the save recorded no timestamp. */
@@ -129,6 +130,11 @@ export function ServerGuilds() {
     queryFn: () => api.serverGuilds(id),
     retry: false,
     refetchInterval: 5 * 60_000,
+    // Keep the parse across navigation; re-reading a large save is slow (see
+    // ServerPlayers for the same reasoning). This key is shared with the live
+    // map's marker overlay, so both share one cached read.
+    gcTime: 60 * 60_000,
+    staleTime: 60_000,
   });
 
   if (serverQuery.isLoading) return <p className="p-6 text-muted-foreground">Loading...</p>;
@@ -136,6 +142,7 @@ export function ServerGuilds() {
 
   const notConfigured =
     guildsQuery.isError && guildsQuery.error instanceof ApiError && guildsQuery.error.status === 400;
+  const hasData = guildsQuery.data !== undefined;
   const guilds = guildsQuery.data?.guilds ?? [];
   const players = guildsQuery.data?.players ?? [];
 
@@ -149,10 +156,10 @@ export function ServerGuilds() {
       </header>
 
       <div className="space-y-4 p-4 lg:space-y-6 lg:p-8">
-        {guildsQuery.isLoading && <SaveReadProgress />}
-        {notConfigured && <SavePathSetup />}
+        {!hasData && guildsQuery.isFetching && <SaveReadProgress />}
+        {notConfigured && !hasData && <SavePathSetup />}
 
-        {guildsQuery.isError && !notConfigured && (
+        {!hasData && guildsQuery.isError && !notConfigured && (
           infoQuery.isError ? <ServerUnreachable /> : (
             <p className="text-sm text-destructive">
               Could not read the save file: {(guildsQuery.error as Error).message}
@@ -160,7 +167,9 @@ export function ServerGuilds() {
           )
         )}
 
-        {guildsQuery.isSuccess &&
+        {hasData && guildsQuery.isFetching && <SaveUpdatingBanner />}
+
+        {hasData &&
           (guilds.length === 0 ? (
             <p className="text-sm text-muted-foreground">No guilds in this save yet.</p>
           ) : (

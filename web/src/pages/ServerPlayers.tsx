@@ -8,6 +8,7 @@ import { elementColor, palEntry, palIconUrl, palName, passiveName, rarityTier } 
 import { cn } from "../lib/utils";
 import { ServerUnreachable } from "../components/ServerUnreachable";
 import { SaveReadProgress } from "../components/SaveReadProgress";
+import { SaveUpdatingBanner } from "../components/SaveUpdatingBanner";
 import { PalDetailDialog } from "../components/PalDetailDialog";
 import { SavePathSetup } from "../components/SavePathSetup";
 import { Badge } from "../components/ui/badge";
@@ -229,6 +230,13 @@ export function ServerPlayers() {
     queryFn: () => api.serverPals(id),
     retry: false,
     refetchInterval: refreshMinutes * 60_000,
+    // Keep the parsed result in memory across navigation. Re-parsing a large
+    // save takes 20-30s, so the default 5-minute gcTime meant leaving the
+    // page and coming back dropped everything and made you wait again.
+    gcTime: 60 * 60_000,
+    // A remount within the window reuses the cache instead of refetching,
+    // so switching tabs and back is instant; the interval still refreshes it.
+    staleTime: 60_000,
   });
 
   if (serverQuery.isLoading) return <p className="p-6 text-muted-foreground">Loading...</p>;
@@ -236,6 +244,9 @@ export function ServerPlayers() {
 
   const notConfigured =
     palsQuery.isError && palsQuery.error instanceof ApiError && palsQuery.error.status === 400;
+  // Render from whatever we last parsed, even while a refresh is in flight or
+  // a background refresh just failed — a stale roster beats a blank page.
+  const hasData = palsQuery.data !== undefined;
   const players = palsQuery.data?.players ?? [];
   const visible = players.filter((p) => {
     if (!query.trim()) return true;
@@ -266,17 +277,21 @@ export function ServerPlayers() {
       </header>
 
       <div className="space-y-4 p-4 lg:space-y-6 lg:p-8">
-        {palsQuery.isLoading && <SaveReadProgress />}
+        {/* Full progress only on the very first parse; after that a refresh
+            shows the banner over the last result instead of blanking. */}
+        {!hasData && palsQuery.isFetching && <SaveReadProgress />}
 
-        {notConfigured && <SavePathSetup />}
+        {notConfigured && !hasData && <SavePathSetup />}
 
-        {palsQuery.isError && !notConfigured && (
+        {!hasData && palsQuery.isError && !notConfigured && (
           infoQuery.isError ? <ServerUnreachable /> : (
             <p className="text-sm text-destructive">Could not read the save file: {(palsQuery.error as Error).message}</p>
           )
         )}
 
-        {palsQuery.isSuccess && players.length > 0 && (
+        {hasData && palsQuery.isFetching && <SaveUpdatingBanner />}
+
+        {hasData && players.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="relative min-w-0 flex-1 sm:max-w-md">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/30" />
@@ -321,7 +336,7 @@ export function ServerPlayers() {
           </div>
         )}
 
-        {palsQuery.isSuccess &&
+        {hasData &&
           (players.length === 0 ? (
             <p className="text-sm text-muted-foreground">No players found in this save yet.</p>
           ) : visible.length === 0 ? (
@@ -332,7 +347,7 @@ export function ServerPlayers() {
             ))
           ))}
 
-        {palsQuery.isSuccess && players.length > 0 && (
+        {hasData && players.length > 0 && (
           <p className="pt-2 text-xs text-ink/35">
             Pal artwork and names © Pocketpair, Inc. Icons and localisation data vendored from{" "}
             <span className="font-mono">palworld-server-manager</span> and{" "}
