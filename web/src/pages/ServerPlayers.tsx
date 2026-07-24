@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, RefreshCw, Search } from "lucide-react";
 import { api, ApiError, type Pal, type PlayerPals } from "../lib/api";
 import { initials, playerColor } from "../lib/palette";
 import { elementColor, palEntry, palIconUrl, palName, passiveName, rarityTier } from "../lib/paldex";
@@ -300,20 +300,36 @@ export function ServerPlayers() {
               />
             </div>
 
-            <label className="flex shrink-0 items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-ink/40">Refresh</span>
-              <select
-                value={refreshMinutes}
-                onChange={(e) => setRefreshMinutes(Number(e.target.value))}
-                className="rounded-lg border border-ink/15 bg-white px-2 py-1.5 font-mono text-xs text-ink focus:border-brand-red/50 focus:outline-none"
+            <div className="flex shrink-0 items-center gap-2">
+              <label className="flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-ink/40">Refresh</span>
+                <select
+                  value={refreshMinutes}
+                  onChange={(e) => setRefreshMinutes(Number(e.target.value))}
+                  className="rounded-lg border border-ink/15 bg-white px-2 py-1.5 font-mono text-xs text-ink focus:border-brand-red/50 focus:outline-none"
+                >
+                  {REFRESH_OPTIONS.map((m) => (
+                    <option key={m} value={m}>
+                      {m} min
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {/* Refetches rather than forcing a re-parse: the server reuses
+                  its cached read while Level.sav is unchanged, so this picks
+                  up a new autosave immediately without paying to re-parse a
+                  world that hasn't moved. */}
+              <button
+                onClick={() => palsQuery.refetch()}
+                disabled={palsQuery.isFetching}
+                title="Check for a newer save now"
+                aria-label="Refresh now"
+                className="rounded-lg border border-ink/15 bg-white p-2 text-ink/60 transition-colors hover:bg-ink/5 hover:text-ink disabled:opacity-50"
               >
-                {REFRESH_OPTIONS.map((m) => (
-                  <option key={m} value={m}>
-                    {m} min
-                  </option>
-                ))}
-              </select>
-            </label>
+                <RefreshCw className={cn("h-3.5 w-3.5", palsQuery.isFetching && "animate-spin")} />
+              </button>
+            </div>
           </div>
         )}
 
