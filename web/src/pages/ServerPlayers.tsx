@@ -8,17 +8,21 @@ import { elementColor, palEntry, palIconUrl, palName, passiveName, rarityTier } 
 import { cn } from "../lib/utils";
 import { ServerUnreachable } from "../components/ServerUnreachable";
 import { SaveReadProgress } from "../components/SaveReadProgress";
+import { PalDetailDialog } from "../components/PalDetailDialog";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
 
-function PalCard({ pal }: { pal: Pal }) {
+function PalCard({ pal, onOpen }: { pal: Pal; onOpen: () => void }) {
   const species = palName(pal.characterId);
   const entry = palEntry(pal.characterId);
   const elements = (entry?.elements ?? []).slice(0, 2);
   const tier = rarityTier(entry?.rarity ?? 0);
 
   return (
-    <div className="flex gap-3 rounded-xl border border-ink/10 bg-white/70 p-3">
+    <button
+      onClick={onOpen}
+      className="flex w-full gap-3 rounded-xl border border-ink/10 bg-white/70 p-3 text-left transition-colors hover:border-ink/25 hover:bg-white"
+    >
       <div
         className={cn(
           "flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border",
@@ -109,11 +113,11 @@ function PalCard({ pal }: { pal: Pal }) {
           </div>
         )}
       </div>
-    </div>
+    </button>
   );
 }
 
-function PalGroup({ title, pals }: { title: string; pals: Pal[] }) {
+function PalGroup({ title, pals, onOpen }: { title: string; pals: Pal[]; onOpen: (pal: Pal) => void }) {
   if (pals.length === 0) return null;
   return (
     <div>
@@ -122,14 +126,14 @@ function PalGroup({ title, pals }: { title: string; pals: Pal[] }) {
       </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {pals.map((pal) => (
-          <PalCard key={pal.instanceId} pal={pal} />
+          <PalCard key={pal.instanceId} pal={pal} onOpen={() => onOpen(pal)} />
         ))}
       </div>
     </div>
   );
 }
 
-function PlayerSection({ player, query }: { player: PlayerPals; query: string }) {
+function PlayerSection({ player, query, onOpen }: { player: PlayerPals; query: string; onOpen: (pal: Pal, location: string) => void }) {
   const [open, setOpen] = useState(true);
   const color = playerColor(player.uid);
 
@@ -185,9 +189,9 @@ function PlayerSection({ player, query }: { player: PlayerPals; query: string })
 
       {expanded && (
         <div className="space-y-5 border-t border-ink/10 p-5">
-          <PalGroup title="Party" pals={filtered.party} />
-          <PalGroup title="Palbox" pals={filtered.palbox} />
-          <PalGroup title="At base" pals={filtered.base} />
+          <PalGroup title="Party" pals={filtered.party} onOpen={(p) => onOpen(p, "Party")} />
+          <PalGroup title="Palbox" pals={filtered.palbox} onOpen={(p) => onOpen(p, "Palbox")} />
+          <PalGroup title="At base" pals={filtered.base} onOpen={(p) => onOpen(p, "At base")} />
           {total === 0 && <p className="text-sm text-muted-foreground">No pals owned yet.</p>}
         </div>
       )}
@@ -214,6 +218,8 @@ export function ServerPlayers() {
   const id = Number(serverID);
   const [query, setQuery] = useState("");
   const [refreshMinutes, setRefreshMinutes] = useState(DEFAULT_REFRESH_MINUTES);
+  const [selected, setSelected] = useState<{ pal: Pal; location: string } | null>(null);
+  const openPal = (pal: Pal, location: string) => setSelected({ pal, location });
 
   const serverQuery = useQuery({ queryKey: ["server", id], queryFn: () => api.getServer(id) });
   const infoQuery = useQuery({ queryKey: ["server-info", id], queryFn: () => api.serverInfo(id), retry: false });
@@ -317,7 +323,9 @@ export function ServerPlayers() {
           ) : visible.length === 0 ? (
             <p className="text-sm text-muted-foreground">No pals match "{query}".</p>
           ) : (
-            visible.map((player) => <PlayerSection key={player.uid} player={player} query={query} />)
+            visible.map((player) => (
+              <PlayerSection key={player.uid} player={player} query={query} onOpen={openPal} />
+            ))
           ))}
 
         {palsQuery.isSuccess && players.length > 0 && (
@@ -328,6 +336,12 @@ export function ServerPlayers() {
           </p>
         )}
       </div>
+
+      <PalDetailDialog
+        pal={selected?.pal ?? null}
+        location={selected?.location ?? ""}
+        onClose={() => setSelected(null)}
+      />
     </div>
   );
 }

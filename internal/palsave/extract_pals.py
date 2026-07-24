@@ -158,15 +158,51 @@ def container_id(node, *path):
     return str(raw) if raw is not None else None
 
 
+# Soul/condenser stat names come back as Japanese labels regardless of the
+# server's language, so they're mapped here rather than shown raw.
+STATUS_NAMES = {
+    "最大HP": "Max HP",
+    "最大SP": "Max SP",
+    "攻撃力": "Attack",
+    "防御力": "Defense",
+    "所持重量": "Carry Weight",
+    "捕獲率": "Capture Rate",
+    "作業速度": "Work Speed",
+}
+
+
+def status_points(param, key):
+    """Soul upgrades, as {stat: points}, skipping the zeroes that pad the list."""
+    out = {}
+    for entry in v(param, key, "values", default=None) or []:
+        name = text(entry, "StatusName")
+        points = num(entry, "StatusPoint")
+        if name and points:
+            out[STATUS_NAMES.get(name, name)] = points
+    return out
+
+
 def parse_pal(param, instance_id):
     char_id = text(param, "CharacterID")
     gender = text(param, "Gender")
     passives = v(param, "PassiveSkillList", "values", default=None) or []
+    skills = v(param, "EquipWaza", "values", default=None) or []
+
+    # EPalBaseCampWorkerSickType::None means healthy; anything else is an
+    # ailment worth surfacing, since a sick pal stops working at a base.
+    sick = text(param, "WorkerSick").split("::")[-1]
+    if sick in ("None", ""):
+        sick = ""
+
+    # Hp is a FixedPoint64 holding the value scaled by 1000.
+    hp_raw = num(param, "Hp", "Value", default=0)
+
     return {
         "instanceId": instance_id,
         "characterId": char_id,
         "nickname": text(param, "NickName"),
         "level": num(param, "Level", default=1) or 1,
+        "exp": num(param, "Exp"),
         "gender": "female" if "Female" in gender else ("male" if "Male" in gender else ""),
         "isBoss": char_id.upper().startswith("BOSS_"),
         "isLucky": bool(unwrap(v(param, "IsRarePal", default=False))),
@@ -175,6 +211,14 @@ def parse_pal(param, instance_id):
         "talentShot": num(param, "Talent_Shot"),
         "talentDefense": num(param, "Talent_Defense"),
         "passives": [str(p) for p in passives],
+        "skills": [str(s).split("::")[-1] for s in skills],
+        "hp": round(hp_raw / 1000) if hp_raw else 0,
+        "sanity": round(num(param, "SanityValue"), 1),
+        "stomach": round(num(param, "FullStomach"), 1),
+        "friendship": num(param, "FriendshipPoint"),
+        "sick": sick,
+        "souls": status_points(param, "GotExStatusPointList"),
+        "slotIndex": num(param, "SlotId", "SlotIndex", default=-1),
     }
 
 

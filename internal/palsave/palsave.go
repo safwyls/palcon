@@ -40,6 +40,18 @@ type Pal struct {
 	TalentShot    int      `json:"talentShot"`
 	TalentDefense int      `json:"talentDefense"`
 	Passives      []string `json:"passives"`
+
+	// Detail-view extras. Zero values are normal here: a pal that has never
+	// been in a base has no sickness, and souls is empty until upgraded.
+	Exp        int            `json:"exp"`
+	Skills     []string       `json:"skills"`
+	HP         int            `json:"hp"`
+	Sanity     float64        `json:"sanity"`
+	Stomach    float64        `json:"stomach"`
+	Friendship int            `json:"friendship"`
+	Sick       string         `json:"sick"`
+	Souls      map[string]int `json:"souls"`
+	SlotIndex  int            `json:"slotIndex"`
 }
 
 type PlayerPals struct {

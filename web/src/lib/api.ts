@@ -110,6 +110,17 @@ export interface Pal {
   talentShot: number;
   talentDefense: number;
   passives: string[];
+  exp: number;
+  skills: string[];
+  hp: number;
+  sanity: number;
+  stomach: number;
+  friendship: number;
+  /** Ailment name, or "" when healthy. A sick pal stops working at a base. */
+  sick: string;
+  /** Soul upgrades applied, keyed by stat name. */
+  souls: Record<string, number>;
+  slotIndex: number;
 }
 
 export interface PlayerPals {

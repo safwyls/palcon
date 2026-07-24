@@ -1,5 +1,7 @@
 import palDex from "../data/palDex.json";
+import palStats from "../data/palStats.json";
 import passiveSkills from "../data/passiveSkills.json";
+import activeSkills from "../data/activeSkills.json";
 
 /**
  * Lookups that turn a save file's internal ids into what the game actually
@@ -18,8 +20,18 @@ interface PalEntry {
   rarity: number;
 }
 
+/** Skills and passives are stored as {n: name, d: description} to keep the
+ * chunk small; `d` is often just the name repeated, which callers drop. */
+interface NamedEntry {
+  n: string;
+  /** Null for entries the catalog has no blurb for. */
+  d: string | null;
+}
+
 const dex = palDex as Record<string, PalEntry>;
-const passives = passiveSkills as Record<string, string>;
+const passives = passiveSkills as Record<string, NamedEntry>;
+const actives = activeSkills as Record<string, NamedEntry>;
+const stats = palStats as Record<string, { hp: number; stomach: number }>;
 
 /** Icons and dex entries share one key: the id lowercased, minus the
  * BOSS_ prefix that marks an alpha variant of an otherwise normal pal. */
@@ -40,7 +52,30 @@ export function palIconUrl(characterId: string): string {
 }
 
 export function passiveName(code: string): string {
-  return passives[code] ?? code;
+  return passives[code]?.n ?? code;
+}
+
+/** Description, or "" when the catalog just repeats the name (many do). */
+export function passiveDescription(code: string): string {
+  const entry = passives[code];
+  if (!entry?.d || entry.d === entry.n) return "";
+  return entry.d;
+}
+
+export function skillName(code: string): string {
+  return actives[code]?.n ?? code;
+}
+
+export function skillDescription(code: string): string {
+  const entry = actives[code];
+  if (!entry?.d || entry.d === entry.n) return "";
+  return entry.d;
+}
+
+/** Base max HP and stomach for the species, used to show a pal's current
+ * values as a proportion. Undefined for anything not in the catalog. */
+export function palBaseStats(characterId: string): { hp: number; stomach: number } | undefined {
+  return stats[palKey(characterId)];
 }
 
 /** Rarity 8+ is the game's own threshold for a rare (blue-tier) pal, 12+ for

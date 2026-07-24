@@ -1,13 +1,20 @@
+import { Suspense, lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./lib/auth";
 import { Login } from "./pages/Login";
 import { EmptyState } from "./pages/EmptyState";
 import { ServerDashboard } from "./pages/ServerDashboard";
 import { ServerMap } from "./pages/ServerMap";
-import { ServerPlayers } from "./pages/ServerPlayers";
 import { AppShell } from "./components/AppShell";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
+
+// Split out: this route pulls in the pal dex, skill and stat catalogs
+// (~190 KB), which nothing else needs. Dashboard and map users never
+// download them.
+const ServerPlayers = lazy(() =>
+  import("./pages/ServerPlayers").then((m) => ({ default: m.ServerPlayers })),
+);
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { username, loading } = useAuth();
@@ -32,7 +39,14 @@ export function App() {
           <Route path="/" element={<EmptyState />} />
           <Route path="/servers/:serverID" element={<ServerDashboard />} />
           <Route path="/servers/:serverID/map" element={<ServerMap />} />
-          <Route path="/servers/:serverID/players" element={<ServerPlayers />} />
+          <Route
+            path="/servers/:serverID/players"
+            element={
+              <Suspense fallback={<p className="p-6 text-muted-foreground">Loading…</p>}>
+                <ServerPlayers />
+              </Suspense>
+            }
+          />
         </Route>
       </Routes>
     </TooltipProvider>
