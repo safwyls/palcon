@@ -18,6 +18,7 @@ const emptyForm: ServerWriteInput = {
   useRest: true,
   enabled: true,
   savePath: "",
+  containerName: "",
 };
 
 function formStateFor(mode: "create" | "edit", server?: Server): ServerWriteInput {
@@ -32,6 +33,7 @@ function formStateFor(mode: "create" | "edit", server?: Server): ServerWriteInpu
       useRest: server.useRest,
       enabled: server.enabled,
       savePath: server.savePath,
+      containerName: server.containerName,
     };
   }
   return emptyForm;
@@ -113,6 +115,19 @@ export function ServerFormDialog({
               type="password"
               placeholder={mode === "edit" && server?.hasRconPassword ? "unchanged" : undefined}
             />
+          </div>
+
+          <div className="mt-4 space-y-1.5">
+            <Label>Container name (optional)</Label>
+            <Input
+              value={form.containerName}
+              placeholder="palworld"
+              onChange={(e) => setForm({ ...form, containerName: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Docker container this server runs in. Enables start/stop/restart, and needs
+              <code> DOCKER_HOST</code> pointed at a scoped socket proxy.
+            </p>
           </div>
 
           <div className="mt-4 space-y-1.5">

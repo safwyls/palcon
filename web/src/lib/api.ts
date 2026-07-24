@@ -28,6 +28,49 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+export const PERMISSIONS = ["power", "broadcast", "save", "moderate", "shutdown"] as const;
+export type Permission = (typeof PERMISSIONS)[number];
+
+/** Human labels for the permission checkboxes, and what each actually allows. */
+export const PERMISSION_LABELS: Record<Permission, { label: string; help: string }> = {
+  power: { label: "Power", help: "Start, stop and restart the server container" },
+  broadcast: { label: "Broadcast", help: "Send in-game messages" },
+  save: { label: "Save world", help: "Trigger a world save" },
+  moderate: { label: "Moderate", help: "Kick, ban and unban players" },
+  shutdown: { label: "In-game shutdown", help: "Shut the server down with a countdown" },
+};
+
+export interface Me {
+  username: string;
+  role: string;
+  isAdmin: boolean;
+  permissions: Permission[];
+}
+
+export interface AppUser {
+  id: number;
+  username: string;
+  role: string;
+  permissions: Permission[];
+  disabled: boolean;
+}
+
+export interface UserWriteInput {
+  username?: string;
+  password?: string;
+  role: string;
+  permissions: Permission[];
+  disabled?: boolean;
+}
+
+export interface ContainerState {
+  name: string;
+  status: string;
+  running: boolean;
+  startedAt: string;
+  exitCode: number;
+}
+
 export interface Server {
   id: number;
   name: string;
@@ -39,6 +82,7 @@ export interface Server {
   useRest: boolean;
   enabled: boolean;
   savePath: string;
+  containerName: string;
 }
 
 export interface ServerWriteInput {
@@ -51,6 +95,7 @@ export interface ServerWriteInput {
   useRest: boolean;
   enabled: boolean;
   savePath: string;
+  containerName: string;
 }
 
 export interface ServerInfo {
@@ -171,7 +216,19 @@ export const api = {
   login: (username: string, password: string) =>
     request<{ username: string }>("/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   logout: () => request<void>("/logout", { method: "POST" }),
-  me: () => request<{ username: string }>("/me"),
+  me: () => request<Me>("/me"),
+  changeOwnPassword: (currentPassword: string, newPassword: string) =>
+    request<void>("/me/password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) }),
+
+  listUsers: () => request<AppUser[]>("/users"),
+  createUser: (input: UserWriteInput) => request<AppUser>("/users", { method: "POST", body: JSON.stringify(input) }),
+  updateUser: (id: number, input: UserWriteInput) =>
+    request<AppUser>(`/users/${id}`, { method: "PUT", body: JSON.stringify(input) }),
+  deleteUser: (id: number) => request<void>(`/users/${id}`, { method: "DELETE" }),
+
+  containerStatus: (id: number) => request<ContainerState>(`/servers/${id}/container`),
+  containerAction: (id: number, action: "start" | "stop" | "restart") =>
+    request<ContainerState>(`/servers/${id}/container/${action}`, { method: "POST" }),
 
   listServers: () => request<Server[]>("/servers"),
   getServer: (id: number) => request<Server>(`/servers/${id}`),

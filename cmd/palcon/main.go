@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/safwyls/palcon/internal/config"
 	"github.com/safwyls/palcon/internal/crypto"
 	"github.com/safwyls/palcon/internal/db"
+	"github.com/safwyls/palcon/internal/dockerctl"
 	"github.com/safwyls/palcon/internal/palsave"
 	"github.com/safwyls/palcon/internal/store"
 	"github.com/safwyls/palcon/web"
@@ -73,7 +75,17 @@ func run(logger *slog.Logger) error {
 	// history to draw, rather than only what's happened since page load.
 	go collector.New(st, logger).Run(ctx)
 
-	apiServer := api.New(st, cfg.JWTSecret, logger, palReader)
+	// Optional: without DOCKER_HOST, power control is simply absent.
+	var docker *dockerctl.Client
+	if cfg.DockerHost != "" {
+		docker, err = dockerctl.New(cfg.DockerHost)
+		if err != nil {
+			return fmt.Errorf("configuring docker control: %w", err)
+		}
+		logger.Info("docker control enabled", "endpoint", cfg.DockerHost)
+	}
+
+	apiServer := api.New(st, cfg.JWTSecret, logger, palReader, docker)
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           apiServer.Routes(distFS),

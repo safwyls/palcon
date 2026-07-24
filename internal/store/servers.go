@@ -25,6 +25,9 @@ type Server struct {
 	// SavePath is an optional container-local path to the directory holding
 	// the server's Level.sav (phase 5 Pal viewer). Empty = not configured.
 	SavePath string
+	// ContainerName is the Docker container this server runs in, used for
+	// start/stop/restart via the socket proxy. Empty = power control off.
+	ContainerName string
 }
 
 type serverRow struct {
@@ -38,6 +41,7 @@ type serverRow struct {
 	UseREST         int
 	Enabled         int
 	SavePath        string
+	ContainerName   string
 }
 
 func (s *Store) decryptServer(r serverRow) (*Server, error) {
@@ -50,24 +54,25 @@ func (s *Store) decryptServer(r serverRow) (*Server, error) {
 		return nil, fmt.Errorf("decrypting rest password: %w", err)
 	}
 	return &Server{
-		ID:           r.ID,
-		Name:         r.Name,
-		Host:         r.Host,
-		RCONPort:     r.RCONPort,
-		RCONPassword: rconPass,
-		RESTPort:     r.RESTPort,
-		RESTPassword: restPass,
-		UseREST:      r.UseREST != 0,
-		Enabled:      r.Enabled != 0,
-		SavePath:     r.SavePath,
+		ID:            r.ID,
+		Name:          r.Name,
+		Host:          r.Host,
+		RCONPort:      r.RCONPort,
+		RCONPassword:  rconPass,
+		RESTPort:      r.RESTPort,
+		RESTPassword:  restPass,
+		UseREST:       r.UseREST != 0,
+		Enabled:       r.Enabled != 0,
+		SavePath:      r.SavePath,
+		ContainerName: r.ContainerName,
 	}, nil
 }
 
-const serverColumns = `id, name, host, rcon_port, rcon_password_enc, rest_port, rest_password_enc, use_rest, enabled, save_path`
+const serverColumns = `id, name, host, rcon_port, rcon_password_enc, rest_port, rest_password_enc, use_rest, enabled, save_path, container_name`
 
 func scanServerRow(scan func(dest ...any) error) (serverRow, error) {
 	var r serverRow
-	err := scan(&r.ID, &r.Name, &r.Host, &r.RCONPort, &r.RCONPasswordEnc, &r.RESTPort, &r.RESTPasswordEnc, &r.UseREST, &r.Enabled, &r.SavePath)
+	err := scan(&r.ID, &r.Name, &r.Host, &r.RCONPort, &r.RCONPasswordEnc, &r.RESTPort, &r.RESTPasswordEnc, &r.UseREST, &r.Enabled, &r.SavePath, &r.ContainerName)
 	return r, err
 }
 
@@ -117,9 +122,9 @@ func (s *Store) CreateServer(ctx context.Context, srv *Server) (int64, error) {
 		return 0, err
 	}
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO servers (name, host, rcon_port, rcon_password_enc, rest_port, rest_password_enc, use_rest, enabled, save_path)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		srv.Name, srv.Host, srv.RCONPort, rconEnc, srv.RESTPort, restEnc, boolToInt(srv.UseREST), boolToInt(srv.Enabled), srv.SavePath)
+		INSERT INTO servers (name, host, rcon_port, rcon_password_enc, rest_port, rest_password_enc, use_rest, enabled, save_path, container_name)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		srv.Name, srv.Host, srv.RCONPort, rconEnc, srv.RESTPort, restEnc, boolToInt(srv.UseREST), boolToInt(srv.Enabled), srv.SavePath, srv.ContainerName)
 	if err != nil {
 		return 0, err
 	}
@@ -154,10 +159,10 @@ func (s *Store) UpdateServer(ctx context.Context, srv *Server) error {
 		UPDATE servers
 		SET name = ?, host = ?, rcon_port = ?, rcon_password_enc = ?,
 		    rest_port = ?, rest_password_enc = ?, use_rest = ?, enabled = ?,
-		    save_path = ?
+		    save_path = ?, container_name = ?
 		WHERE id = ?`,
 		srv.Name, srv.Host, srv.RCONPort, rconEnc, srv.RESTPort, restEnc,
-		boolToInt(srv.UseREST), boolToInt(srv.Enabled), srv.SavePath, srv.ID)
+		boolToInt(srv.UseREST), boolToInt(srv.Enabled), srv.SavePath, srv.ContainerName, srv.ID)
 	return err
 }
 

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./lib/auth";
 import { Login } from "./pages/Login";
 import { EmptyState } from "./pages/EmptyState";
+import { Users } from "./pages/Users";
 import { ServerDashboard } from "./pages/ServerDashboard";
 import { ServerMap } from "./pages/ServerMap";
 import { AppShell } from "./components/AppShell";
@@ -40,6 +41,7 @@ export function App() {
           }
         >
           <Route path="/" element={<EmptyState />} />
+          <Route path="/users" element={<Users />} />
           <Route path="/servers/:serverID" element={<ServerDashboard />} />
           <Route path="/servers/:serverID/map" element={<ServerMap />} />
           <Route

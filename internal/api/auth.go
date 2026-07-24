@@ -16,13 +16,18 @@ const sessionCookieName = "palcon_session"
 const sessionDuration = 7 * 24 * time.Hour
 
 type sessionClaims struct {
+	// UserID, not the username: the request path reloads the user each
+	// time so permission and password changes apply immediately, and a
+	// rename doesn't invalidate a live session.
+	UserID   int64  `json:"uid"`
 	Username string `json:"username"`
 	jwt.RegisteredClaims
 }
 
-func (s *Server) signSession(username string) (string, error) {
+func (s *Server) signSession(user *store.User) (string, error) {
 	claims := sessionClaims{
-		Username: username,
+		UserID:   user.ID,
+		Username: user.Username,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(sessionDuration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -62,8 +67,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
+	if user.Disabled {
+		writeError(w, http.StatusForbidden, "account disabled")
+		return
+	}
 
-	token, err := s.signSession(user.Username)
+	token, err := s.signSession(user)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create session")
 		return
@@ -91,9 +100,27 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleMe tells the frontend who it is and what it may do, so the UI can
+// hide controls the server would reject anyway.
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
-	username, _ := usernameFromContext(r.Context())
-	writeJSON(w, http.StatusOK, map[string]string{"username": username})
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	perms := user.Permissions
+	if user.IsAdmin() {
+		perms = store.AllPermissions
+	}
+	if perms == nil {
+		perms = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"username":    user.Username,
+		"role":        user.Role,
+		"isAdmin":     user.IsAdmin(),
+		"permissions": perms,
+	})
 }
 
 // BootstrapAdmin creates the initial admin user from ADMIN_USERNAME/
@@ -114,6 +141,6 @@ func BootstrapAdmin(ctx context.Context, s *store.Store, username, password stri
 	if err != nil {
 		return err
 	}
-	_, err = s.CreateUser(ctx, username, string(hash), "admin")
+	_, err = s.CreateUser(ctx, username, string(hash), store.RoleAdmin, nil)
 	return err
 }

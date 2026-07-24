@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api, type Player } from "../lib/api";
 import { PlayerList } from "../components/PlayerList";
 import { ServerMetrics } from "../components/ServerMetrics";
+import { ServerPower } from "../components/ServerPower";
 import { ServerPerformance } from "../components/ServerPerformance";
 import { ServerSettings } from "../components/ServerSettings";
 import { ServerUnreachable } from "../components/ServerUnreachable";
@@ -106,6 +107,8 @@ export function ServerDashboard() {
         <ServerUnreachable />
       ) : (
         <div className="space-y-4 p-4 lg:space-y-6 lg:p-8">
+          <ServerPower serverId={id} />
+
           <ServerMetrics serverId={id} />
 
           <ServerPerformance serverId={id} />

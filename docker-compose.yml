@@ -19,4 +19,25 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      # Optional: enables the start/stop/restart controls. Points at the
+      # scoped proxy below, never at the host's docker socket directly —
+      # that socket is root-equivalent, and Palcon has no business holding
+      # it. Leave unset to run without power control.
+      - DOCKER_HOST=tcp://docker-proxy:2375
+    restart: unless-stopped
+
+  # Grants exactly two things: reading container state, and POSTing
+  # start/stop/restart. It cannot create containers, mount volumes, or read
+  # images, so a compromise of Palcon can at worst bounce a game server.
+  # Only this container touches the docker socket.
+  docker-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:latest
+    environment:
+      - CONTAINERS=1   # inspect container state
+      - POST=1         # allow start/stop/restart (read-only without this)
+      # Everything else stays off. Notably IMAGES, VOLUMES, NETWORKS, EXEC
+      # and the swarm APIs, any of which would widen this well past
+      # "bounce a game server".
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped

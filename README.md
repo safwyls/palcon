@@ -102,6 +102,50 @@ docker compose up --build
 | `ENCRYPTION_KEY` | yes | — | encrypts stored RCON/REST passwords, must be exactly 32 bytes |
 | `ADMIN_USERNAME` | no | `admin` | bootstrap admin username (first run only) |
 | `ADMIN_PASSWORD` | yes on first run | — | bootstrap admin password (first run only) |
+| `DOCKER_HOST` | no | — | scoped docker socket proxy for start/stop/restart, e.g. `tcp://docker-proxy:2375`. Unset disables power control |
+
+## Users and permissions
+
+`ADMIN_USERNAME`/`ADMIN_PASSWORD` bootstrap a single admin on first run.
+From there, **Users** in the sidebar (admins only) creates accounts for other
+players and grants each one a subset of:
+
+| Permission | Allows |
+|---|---|
+| Power | Start, stop and restart the server container |
+| Broadcast | Send in-game messages |
+| Save world | Trigger a world save |
+| Moderate | Kick, ban and unban players |
+| In-game shutdown | Shut the server down with a countdown |
+
+Anyone signed in can *view* everything — dashboard, map, pals, guilds. The
+permissions above gate only the actions that change something, and admins
+implicitly hold all of them plus server and user administration.
+
+Grants are re-read from the database on every request rather than baked into
+the session token, so revoking a permission or disabling an account takes
+effect immediately instead of whenever a week-long session happens to expire.
+
+## Server power control
+
+Palcon can start/stop/restart the container a Palworld server runs in, which
+is what makes "stop overnight, start in the morning" a button instead of an
+SSH session.
+
+**It does not need — and should not be given — the host's docker socket.**
+That socket is root-equivalent: anything holding it can start a privileged
+container and own the host. Instead, run
+[docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)
+alongside Palcon with only `CONTAINERS=1` and `POST=1`, and point
+`DOCKER_HOST` at it (see `docker-compose.yml`). Palcon then gets exactly
+"inspect, start, stop, restart" and nothing else; it cannot create
+containers, mount volumes, or exec into anything.
+
+Then set each server's **Container name** in its edit dialog. Servers without
+one simply don't show power controls.
+
+Stops request a 30-second graceful shutdown so the world is written to disk
+before Docker resorts to SIGKILL.
 
 ## Deploying on TrueNAS Scale
 

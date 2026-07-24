@@ -28,6 +28,11 @@ type Config struct {
 	// users table is empty).
 	AdminUsername string
 	AdminPassword string
+
+	// DockerHost points at a scoped docker socket proxy used to start and
+	// stop game server containers. Empty disables power control entirely —
+	// Palcon should never require access to a docker socket to run.
+	DockerHost string
 }
 
 func (c *Config) DBPath() string {
@@ -43,6 +48,7 @@ func Load() (*Config, error) {
 		DataDir:       getEnv("DATA_DIR", "./data"),
 		AdminUsername: getEnv("ADMIN_USERNAME", "admin"),
 		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
+		DockerHost:    os.Getenv("DOCKER_HOST"),
 	}
 
 	jwtSecret := os.Getenv("JWT_SECRET")

@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { LogOut, Plus } from "lucide-react";
+import { LogOut, Plus, Users as UsersIcon } from "lucide-react";
 import { type Server } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { cn } from "../lib/utils";
 import { ServerSphere } from "./ServerSphere";
 import { ServerFormDialog } from "./ServerFormDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** Desktop icon rail: logo orb, one Pal Sphere per server, add button, logout. */
 export function ServerRail({ servers, activeServerId }: { servers: Server[]; activeServerId: number | null }) {
-  const { username, logout } = useAuth();
+  const { username, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [addOpen, setAddOpen] = useState(false);
@@ -46,6 +47,25 @@ export function ServerRail({ servers, activeServerId }: { servers: Server[]; act
       </Tooltip>
 
       <div className="flex-1" />
+
+      {isAdmin && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => navigate("/users")}
+              className={cn(
+                "flex h-10 w-10 items-center justify-center rounded-full transition",
+                location.pathname === "/users"
+                  ? "bg-white/10 text-paper"
+                  : "text-paper/40 hover:bg-white/10 hover:text-paper",
+              )}
+            >
+              <UsersIcon className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Users</TooltipContent>
+        </Tooltip>
+      )}
 
       <Tooltip>
         <TooltipTrigger asChild>

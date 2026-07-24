@@ -24,6 +24,7 @@ type serverDTO struct {
 	UseREST         bool   `json:"useRest"`
 	Enabled         bool   `json:"enabled"`
 	SavePath        string `json:"savePath"`
+	ContainerName   string `json:"containerName"`
 }
 
 func toDTO(srv *store.Server) serverDTO {
@@ -38,19 +39,21 @@ func toDTO(srv *store.Server) serverDTO {
 		UseREST:         srv.UseREST,
 		Enabled:         srv.Enabled,
 		SavePath:        srv.SavePath,
+		ContainerName:   srv.ContainerName,
 	}
 }
 
 type serverWriteRequest struct {
-	Name         string `json:"name"`
-	Host         string `json:"host"`
-	RCONPort     int    `json:"rconPort"`
-	RCONPassword string `json:"rconPassword"`
-	RESTPort     int    `json:"restPort"`
-	RESTPassword string `json:"restPassword"`
-	UseREST      bool   `json:"useRest"`
-	Enabled      bool   `json:"enabled"`
-	SavePath     string `json:"savePath"`
+	Name          string `json:"name"`
+	Host          string `json:"host"`
+	RCONPort      int    `json:"rconPort"`
+	RCONPassword  string `json:"rconPassword"`
+	RESTPort      int    `json:"restPort"`
+	RESTPassword  string `json:"restPassword"`
+	UseREST       bool   `json:"useRest"`
+	Enabled       bool   `json:"enabled"`
+	SavePath      string `json:"savePath"`
+	ContainerName string `json:"containerName"`
 }
 
 func serverIDFromRequest(r *http.Request) (int64, error) {
@@ -99,7 +102,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		RCONPort: req.RCONPort, RCONPassword: req.RCONPassword,
 		RESTPort: req.RESTPort, RESTPassword: req.RESTPassword,
 		UseREST: req.UseREST, Enabled: req.Enabled,
-		SavePath: req.SavePath,
+		SavePath: req.SavePath, ContainerName: req.ContainerName,
 	}
 	id, err := s.store.CreateServer(r.Context(), srv)
 	if err != nil {
@@ -126,7 +129,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		RCONPort: req.RCONPort, RCONPassword: req.RCONPassword,
 		RESTPort: req.RESTPort, RESTPassword: req.RESTPassword,
 		UseREST: req.UseREST, Enabled: req.Enabled,
-		SavePath: req.SavePath,
+		SavePath: req.SavePath, ContainerName: req.ContainerName,
 	}
 	if err := s.store.UpdateServer(r.Context(), srv); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update server")
