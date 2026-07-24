@@ -2,7 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import { formatUptime } from "../lib/palette";
 
-export function ServerMetrics({ serverId }: { serverId: number }) {
+export function ServerMetrics({
+  serverId,
+  onPlayersClick,
+}: {
+  serverId: number;
+  /** When set, the players-online card becomes a shortcut to the roster —
+   * handy on mobile, where the list is a long scroll below the fold. */
+  onPlayersClick?: () => void;
+}) {
   const metricsQuery = useQuery({
     queryKey: ["server-metrics", serverId],
     queryFn: () => api.serverMetrics(serverId),
@@ -29,7 +37,12 @@ export function ServerMetrics({ serverId }: { serverId: number }) {
   if (!m) return null;
 
   const stats = [
-    { label: "Players online", value: `${m.currentplayernum} / ${m.maxplayernum}`, color: "text-pal-green" },
+    {
+      label: "Players online",
+      value: `${m.currentplayernum} / ${m.maxplayernum}`,
+      color: "text-pal-green",
+      onClick: onPlayersClick,
+    },
     { label: "Server tick", value: `${m.serverframetime.toFixed(1)} ms`, color: "text-pal-blue" },
     { label: "In-game days", value: String(m.days), color: "text-brand-amber" },
     { label: "Uptime", value: formatUptime(m.uptime), color: "text-ink" },
@@ -37,12 +50,29 @@ export function ServerMetrics({ serverId }: { serverId: number }) {
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-      {stats.map((s) => (
-        <div key={s.label} className="rounded-2xl border border-ink/10 bg-white/70 p-4 lg:p-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">{s.label}</p>
-          <p className={`mt-2 font-mono text-lg font-bold lg:text-2xl ${s.color}`}>{s.value}</p>
-        </div>
-      ))}
+      {stats.map((s) => {
+        const className = "rounded-2xl border border-ink/10 bg-white/70 p-4 text-left lg:p-5";
+        const body = (
+          <>
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">{s.label}</p>
+            <p className={`mt-2 font-mono text-lg font-bold lg:text-2xl ${s.color}`}>{s.value}</p>
+          </>
+        );
+        return s.onClick ? (
+          <button
+            key={s.label}
+            onClick={s.onClick}
+            className={`${className} transition-colors hover:border-pal-green/40 hover:bg-pal-green/5`}
+            title="Jump to the player list"
+          >
+            {body}
+          </button>
+        ) : (
+          <div key={s.label} className={className}>
+            {body}
+          </div>
+        );
+      })}
     </div>
   );
 }

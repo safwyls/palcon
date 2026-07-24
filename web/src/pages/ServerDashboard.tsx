@@ -145,12 +145,20 @@ export function ServerDashboard() {
         <div className="space-y-4 p-4 lg:space-y-6 lg:p-8">
           <ServerPower serverId={id} />
 
-          <ServerMetrics serverId={id} />
+          <ServerMetrics
+            serverId={id}
+            onPlayersClick={() =>
+              document.getElementById("players-section")?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+          />
 
           <ServerPerformance serverId={id} />
 
           <div className="grid grid-cols-1 gap-4 lg:gap-6 xl:grid-cols-3">
-            <section className="overflow-hidden rounded-2xl border border-ink/10 bg-white/70 xl:col-span-2">
+            <section
+              id="players-section"
+              className="overflow-hidden rounded-2xl border border-ink/10 bg-white/70 scroll-mt-4 xl:col-span-2"
+            >
               <div className="flex items-center justify-between border-b border-ink/10 px-5 py-4">
                 <h2 className="font-display text-base font-bold">Players online</h2>
                 {playerCount !== undefined && (
