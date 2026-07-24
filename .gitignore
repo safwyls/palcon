@@ -18,8 +18,8 @@ web/dist/*
 
 # Palworld world map textures - copyrighted game assets. Supply your own
 # copies locally; they're never committed. See web/public/README.md.
-# web/public/palworld-map.*
-# web/public/palworld-treemap.*
+web/public/palworld-map.*
+web/public/palworld-treemap.*
 
 # Real Palworld saves used for local debugging. These hold player names and
 # platform account IDs, and are far too big for the repo — the committed
