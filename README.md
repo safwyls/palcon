@@ -162,10 +162,18 @@ Either `DOCKER_HOST` isn't set on the Palcon container, or the server has no
 **Container name**. If they're both set and actions fail with a permission
 error, the proxy needs `CONTAINERS=1` and `POST=1`.
 
-**Sick pals / a server that won't stop cleanly.**
-Stops request a 30-second graceful shutdown so Palworld flushes the world to
-disk before Docker resorts to SIGKILL. A stop can therefore take up to half a
-minute to report success.
+**TrueNAS reports the container as "crashed" after a stop.**
+Palworld server images generally ignore SIGTERM, so a plain `docker stop`
+ends in SIGKILL and records exit code 137 — which Docker, and TrueNAS's app
+UI, label "crashed". Palcon avoids that by asking the game to exit on its
+own (see below), which produces exit code 0. If you still see 137, the game
+was already unresponsive when you pressed stop, so it couldn't be asked
+nicely; the container was stopped by force, which in that situation is
+accurate.
+
+If TrueNAS brings the container back up on its own after a stop, check the
+Palworld app's restart policy — TrueNAS may be reviving it independently of
+Docker's own bookkeeping.
 
 ## Users and permissions
 
@@ -202,6 +210,26 @@ in front with only `CONTAINERS=1` and `POST=1`, so Palcon gets exactly
 "inspect, start, stop, restart" and nothing else: no creating containers, no
 mounting volumes, no exec. The worst case if Palcon is compromised is a
 bounced game server.
+
+Set each server's **Container name** in its edit dialog to enable the
+controls; servers without one simply don't show them.
+
+### How stopping works
+
+Stop and restart do three things in order:
+
+1. **Save the world**, so nothing is lost regardless of what follows.
+2. **Ask the game to shut itself down** (a one-second in-game countdown), so
+   the process exits normally with code 0 instead of being SIGKILLed. This is
+   what keeps TrueNAS from reporting the container as "crashed".
+3. **`docker stop`**, which observes that clean exit inside its grace window
+   and keeps Docker in charge of the transition — so a
+   `restart: unless-stopped` policy treats it as an intentional stop rather
+   than a process that died and needs reviving.
+
+Each step is best-effort. A server that's already unresponsive can't save or
+shut itself down, and neither blocks stopping the container — which is often
+exactly why you're reaching for the button.
 
 ## Reading save files
 

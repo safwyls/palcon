@@ -41,32 +41,49 @@ func (s *Server) containerForRequest(w http.ResponseWriter, r *http.Request) (st
 	return srv.ContainerName, true
 }
 
-// saveBeforeStopping asks the game to write its world to disk before the
-// container goes down.
+// prepareForStop saves the world and asks the game to exit on its own,
+// before the container is stopped.
 //
-// `docker stop` sends SIGTERM and then SIGKILL once the grace period runs
-// out, and Palworld server images commonly don't handle SIGTERM at all — so
-// the process is killed outright and anything since the last autosave is
-// lost. Saving first makes that harmless: the kill costs nothing but the
-// process itself.
+// Palworld server images commonly ignore SIGTERM, so `docker stop` alone
+// ends in SIGKILL and the container records exit code 137. Docker — and
+// TrueNAS's app UI, which reads the same field — then reports that as
+// "crashed", which is both alarming and, since nothing was written on the
+// way out, accurate.
 //
-// Best-effort by design. A server that's already unresponsive can't save,
-// and that must not stop us from stopping the container — which is often
-// exactly why someone is reaching for the button.
-func (s *Server) saveBeforeStopping(r *http.Request, container, actor string) {
+// Asking the game to shut itself down first fixes the cause rather than
+// the symptom: the process exits normally with code 0, and `docker stop`
+// (called immediately after) simply observes that clean exit inside its
+// grace window. Running docker stop over the top also keeps Docker in
+// charge of the transition, so a `restart: unless-stopped` policy sees an
+// intentional stop instead of a process that died and needs reviving.
+//
+// Every step is best-effort: a server that's already unresponsive can't
+// save or shut itself down, and neither must block stopping the container,
+// which is often exactly why someone reached for the button.
+func (s *Server) prepareForStop(r *http.Request, container, actor string) {
 	client, _, err := s.clientForServerID(r)
 	if err != nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
 
 	if err := client.Save(ctx); err != nil {
 		s.logger.Warn("could not save world before stopping; stopping anyway",
 			"container", container, "user", actor, "error", err)
+	} else {
+		s.logger.Info("saved world before stopping", "container", container, "user", actor)
+	}
+
+	// A short countdown rather than zero: it gives anyone still connected
+	// the in-game warning, and the process begins exiting well within the
+	// stop grace period that follows.
+	if err := client.Shutdown(ctx, 1, "Server stopping"); err != nil {
+		s.logger.Warn("could not ask the game to shut down; falling back to stopping the container",
+			"container", container, "user", actor, "error", err)
 		return
 	}
-	s.logger.Info("saved world before stopping", "container", container, "user", actor)
+	s.logger.Info("asked the game to shut down", "container", container, "user", actor)
 }
 
 func (s *Server) handleContainerStatus(w http.ResponseWriter, r *http.Request) {
@@ -103,10 +120,10 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 	case "start":
 		err = s.docker.Start(r.Context(), name)
 	case "stop":
-		s.saveBeforeStopping(r, name, actor)
+		s.prepareForStop(r, name, actor)
 		err = s.docker.Stop(r.Context(), name)
 	case "restart":
-		s.saveBeforeStopping(r, name, actor)
+		s.prepareForStop(r, name, actor)
 		err = s.docker.Restart(r.Context(), name)
 	default:
 		writeError(w, http.StatusBadRequest, "unknown action")

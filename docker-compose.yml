@@ -35,6 +35,8 @@ services:
     environment:
       - CONTAINERS=1   # inspect container state
       - POST=1         # allow start/stop/restart (read-only without this)
+      # Stopping asks the game to exit cleanly first, so the container
+      # records exit code 0 rather than being SIGKILLed as "crashed".
       # Everything else stays off. Notably IMAGES, VOLUMES, NETWORKS, EXEC
       # and the swarm APIs, any of which would widen this well past
       # "bounce a game server".
