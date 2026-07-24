@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   TransformWrapper,
   TransformComponent,
-  KeepScale,
   useControls,
   useTransformContext,
+  useTransformEffect,
   useTransformInit,
 } from "react-zoom-pan-pinch";
 import { Home, ZoomIn, ZoomOut, Maximize } from "lucide-react";
@@ -17,6 +17,59 @@ import { Button } from "./ui/button";
 
 function markerId(playerId: string) {
   return `player-marker-${playerId}`;
+}
+
+/**
+ * A map pin that stays a constant pixel size regardless of zoom — the
+ * Leaflet/Mapbox pin convention.
+ *
+ * This exists instead of the library's own KeepScale because KeepScale only
+ * applies its counter-scale inside an onChange subscription, which fires on
+ * transform *changes* and never on mount. A pin that mounts while the map is
+ * already zoomed — exactly what save-derived markers do, arriving seconds
+ * after the map has settled or been zoomed — therefore renders at full
+ * content-space size (huge) until the next interaction nudges the transform.
+ * Reading the current scale at render time fixes the initial size; the
+ * effect keeps it right as the map zooms.
+ *
+ * transformOrigin "0 0" matters: the scale is a bare scale() whose default
+ * origin is the element centre, which fights the left/top anchoring and
+ * drifts the pin with zoom. Anchoring the origin to the same corner removes
+ * the drift (invisible at 1:1, since scale(1) ignores origin).
+ */
+function ScaledPin({
+  id,
+  left,
+  top,
+  children,
+}: {
+  id?: string;
+  left: number;
+  top: number;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const context = useTransformContext();
+
+  useTransformEffect(({ state }) => {
+    if (ref.current) ref.current.style.transform = `scale(${1 / state.scale})`;
+  });
+
+  return (
+    <div
+      ref={ref}
+      id={id}
+      className="absolute flex"
+      style={{
+        left: `${Math.min(100, Math.max(0, left))}%`,
+        top: `${Math.min(100, Math.max(0, top))}%`,
+        transform: `scale(${1 / (context.state.scale || 1)})`,
+        transformOrigin: "0 0",
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
 /** DOM id for a save-derived marker, so it can be zoomed to like a player. */
@@ -277,16 +330,7 @@ export function PlayerMap({
                   .map((m) => {
                     const { xPct, yPct } = worldToMapPercent(m.x, m.y, area);
                     return (
-                      <KeepScale
-                        key={m.id}
-                        id={mapMarkerId(m.id)}
-                        className="absolute flex"
-                        style={{
-                          left: `${Math.min(100, Math.max(0, xPct))}%`,
-                          top: `${Math.min(100, Math.max(0, yPct))}%`,
-                          transformOrigin: "0 0",
-                        }}
-                      >
+                      <ScaledPin key={m.id} id={mapMarkerId(m.id)} left={xPct} top={yPct}>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span
@@ -309,7 +353,7 @@ export function PlayerMap({
                             {m.sublabel && <span className="block text-xs opacity-70">{m.sublabel}</span>}
                           </TooltipContent>
                         </Tooltip>
-                      </KeepScale>
+                      </ScaledPin>
                     );
                   })}
 
@@ -317,36 +361,7 @@ export function PlayerMap({
                   const { xPct, yPct } = worldToMapPercent(p.location_x, p.location_y, area);
                   const selected = selectedId === p.playerId;
                   return (
-                    // KeepScale counteracts the map's zoom so the marker itself
-                    // stays a constant pixel size at any zoom level — same
-                    // convention as Leaflet/Mapbox/Google Maps pins. Position
-                    // (left/top) goes on KeepScale; centering the dot on that
-                    // point is a separate transform on the child, since
-                    // KeepScale needs its own transform for the counter-scale.
-                    //
-                    // transformOrigin must be "0 0": KeepScale's counter-scale
-                    // is a plain `scale()` with no transform-origin of its own,
-                    // so it defaults to the browser's center-of-element origin.
-                    // That's a mismatch with left/top anchoring the marker by
-                    // its top-left corner — scaling around the center instead
-                    // drags the marker away from its true position by an
-                    // amount that grows with zoom (invisible at 1:1, since
-                    // scale(1) is a no-op regardless of origin). Anchoring the
-                    // origin to the same top-left point removes the drift.
-                    // "flex" so the wrapper hugs the button exactly — as a
-                    // block, the inline button gets a line box (taller than
-                    // the button) and baseline alignment shifts the marker
-                    // down a few px from its true anchor.
-                    <KeepScale
-                      key={p.playerId}
-                      id={markerId(p.playerId)}
-                      className="absolute flex"
-                      style={{
-                        left: `${Math.min(100, Math.max(0, xPct))}%`,
-                        top: `${Math.min(100, Math.max(0, yPct))}%`,
-                        transformOrigin: "0 0",
-                      }}
-                    >
+                    <ScaledPin key={p.playerId} id={markerId(p.playerId)} left={xPct} top={yPct}>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
@@ -363,7 +378,7 @@ export function PlayerMap({
                         </TooltipTrigger>
                         <TooltipContent>{p.name}</TooltipContent>
                       </Tooltip>
-                    </KeepScale>
+                    </ScaledPin>
                   );
                 })}
               </div>
