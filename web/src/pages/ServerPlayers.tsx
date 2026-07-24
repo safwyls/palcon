@@ -191,10 +191,18 @@ function agoLabel(iso: string): string {
   return `${Math.floor(s / 3600)}h ago`;
 }
 
+// Re-reading is only worth doing about as often as the data can change, and
+// party/palbox contents move on human timescales. The game also rewrites
+// Level.sav on every autosave (default: every 30s), so a short interval
+// means almost every poll misses the mtime cache and re-parses the world.
+const REFRESH_OPTIONS = [1, 2, 5, 10];
+const DEFAULT_REFRESH_MINUTES = 5;
+
 export function ServerPlayers() {
   const { serverID } = useParams();
   const id = Number(serverID);
   const [query, setQuery] = useState("");
+  const [refreshMinutes, setRefreshMinutes] = useState(DEFAULT_REFRESH_MINUTES);
 
   const serverQuery = useQuery({ queryKey: ["server", id], queryFn: () => api.getServer(id) });
   const infoQuery = useQuery({ queryKey: ["server-info", id], queryFn: () => api.serverInfo(id), retry: false });
@@ -202,7 +210,7 @@ export function ServerPlayers() {
     queryKey: ["server-pals", id],
     queryFn: () => api.serverPals(id),
     retry: false,
-    refetchInterval: 60_000,
+    refetchInterval: refreshMinutes * 60_000,
   });
 
   if (serverQuery.isLoading) return <p className="p-6 text-muted-foreground">Loading...</p>;
@@ -227,7 +235,7 @@ export function ServerPlayers() {
     <div>
       <header className="sticky top-0 z-10 hidden items-center justify-between border-b border-ink/10 bg-paper px-8 py-6 lg:flex">
         <div>
-          <h1 className="font-display text-2xl font-extrabold">Player details</h1>
+          <h1 className="font-display text-2xl font-extrabold">Player pals</h1>
           <p className="mt-0.5 text-sm text-ink/50">
             {serverQuery.data.name} · party &amp; palbox from the save file
           </p>
@@ -264,14 +272,31 @@ export function ServerPlayers() {
         )}
 
         {palsQuery.isSuccess && players.length > 0 && (
-          <div className="relative max-w-md">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/30" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search pals by name, species or passive…"
-              className="pl-9"
-            />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="relative min-w-0 flex-1 sm:max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/30" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search pals by name, species or passive…"
+                className="pl-9"
+              />
+            </div>
+
+            <label className="flex shrink-0 items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink/40">Refresh</span>
+              <select
+                value={refreshMinutes}
+                onChange={(e) => setRefreshMinutes(Number(e.target.value))}
+                className="rounded-lg border border-ink/15 bg-white px-2 py-1.5 font-mono text-xs text-ink focus:border-brand-red/50 focus:outline-none"
+              >
+                {REFRESH_OPTIONS.map((m) => (
+                  <option key={m} value={m}>
+                    {m} min
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         )}
 

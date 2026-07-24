@@ -95,7 +95,7 @@ export function ServerSubNav({ server }: { server: Server }) {
           Live map
         </NavLink>
         <NavLink to={`/servers/${server.id}/players`} className={navLinkClass}>
-          Player details
+          Player pals
         </NavLink>
       </nav>
 

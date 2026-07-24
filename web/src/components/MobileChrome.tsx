@@ -151,7 +151,7 @@ export function MobileTopBar({ server }: { server: Server | null }) {
             Live map
           </NavLink>
           <NavLink to={`/servers/${server.id}/players`} className={segmentClass}>
-            Players
+            Pals
           </NavLink>
         </div>
       )}
