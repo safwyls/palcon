@@ -12,7 +12,7 @@ import {
   skillDescription,
   skillName,
 } from "../lib/paldex";
-import { friendshipRank, palEffectiveStats, talentTone } from "../lib/stats";
+import { friendshipRank, palEffectiveStats, talentTone, STAT_COLORS } from "../lib/stats";
 import { cn } from "../lib/utils";
 import { PassiveTierTile } from "./PassiveBadge";
 import { Badge } from "./ui/badge";
@@ -181,9 +181,9 @@ export function PalDetailDialog({
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/40">Effective stats</p>
               <div className="grid grid-cols-3 gap-3">
-                <StatBar label="HP" value={eff.hp} max={15000} color="#5B9E6F" />
-                <StatBar label="Attack" value={eff.attack} max={1500} color="#E0502F" />
-                <StatBar label="Defense" value={eff.defense} max={1500} color="#5B8DEF" />
+                <StatBar label="HP" value={eff.hp} max={15000} color={STAT_COLORS.hp} />
+                <StatBar label="Attack" value={eff.attack} max={1500} color={STAT_COLORS.attack} />
+                <StatBar label="Defense" value={eff.defense} max={1500} color={STAT_COLORS.defense} />
               </div>
               <p className="mt-2 text-[10px] text-ink/35">
                 Estimated in-game stats at this level. Trust is the one estimate, so a high-bond pal may read a touch

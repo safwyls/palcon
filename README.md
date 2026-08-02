@@ -37,9 +37,15 @@ One Go binary. Your hardware. Your data.
   repair and updates with a live transcript, scheduled save backups, and
   per-user permissions with an admin audit trail, and per-server visibility
   switches so a view — or one player's pals, bags or position — can be kept
-  private.
+  private, including whether password-locked chests are searchable at all.
 - **Automate** — scheduled restarts with in-game warnings, a crash watchdog,
   Discord notifications, and an opt-in public status page.
+- **Find** — search every container in the world at once. One search answers
+  how much of something the server holds, which bases it's spread across, and
+  which chest to open — named and pictured the way the game does it, so
+  "Refined Metal Chest" sends you to the right box. Guild chests included;
+  the map's treasure chests too, behind a spoiler prompt, so nobody gets
+  handed a loot map they didn't ask for.
 - **Plan** — breeding calculators that know what's actually in your boxes:
   child species, reverse lookup, shortest routes, passive-inheritance odds.
 
@@ -55,6 +61,10 @@ from a phone as from a desk.
 | Paldex & records | Breeding calculators |
 |---|---|
 | ![Server paldex completion and record book](site/assets/paldex.webp) | ![Reverse breeding lookup](site/assets/breeding.webp) |
+
+| Storage search |
+|---|
+| ![Searching every container for "ingot": 11,950 across 7 containers in 4 places, split across the guild chest and three bases](site/assets/storage.webp) |
 
 ## Quick start
 

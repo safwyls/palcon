@@ -164,6 +164,7 @@ func (s *Server) Routes(staticFS fs.FS) http.Handler {
 				r.Get("/pals", s.handleServerPals)
 				r.Get("/guilds", s.handleServerGuilds)
 				r.Get("/inventory", s.handleServerInventory)
+				r.Get("/storage", s.handleServerStorage)
 
 				// Who can see what. Admin-only in both directions: the list of
 				// players who asked to be hidden is itself the sort of thing

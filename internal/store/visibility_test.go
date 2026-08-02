@@ -104,3 +104,51 @@ func TestPlayerVisibility(t *testing.T) {
 		t.Fatalf("clearing left %v", v)
 	}
 }
+
+func TestHidePrivateStorageRoundTrip(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+
+	id, err := s.CreateServer(ctx, &Server{Name: "one", Host: "10.0.0.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Default off, like every other switch here: the migration must not change
+	// what an existing server serves.
+	srv, err := s.GetServer(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.HidePrivateStorage {
+		t.Fatal("a fresh server should search locked chests")
+	}
+
+	if err := s.SetHidePrivateStorage(ctx, id, true); err != nil {
+		t.Fatal(err)
+	}
+	if srv, err = s.GetServer(ctx, id); err != nil {
+		t.Fatal(err)
+	} else if !srv.HidePrivateStorage {
+		t.Fatal("switch did not persist")
+	}
+
+	// ListServers scans the same columns by a different path, so a column
+	// added to one and not the other reads as a silently-reset switch.
+	all, err := s.ListServers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 || !all[0].HidePrivateStorage {
+		t.Fatalf("ListServers lost the switch: %+v", all)
+	}
+
+	if err := s.SetHidePrivateStorage(ctx, id, false); err != nil {
+		t.Fatal(err)
+	}
+	if srv, err = s.GetServer(ctx, id); err != nil {
+		t.Fatal(err)
+	} else if srv.HidePrivateStorage {
+		t.Fatal("switch did not clear")
+	}
+}

@@ -45,7 +45,15 @@ KYOSHI_BAG = "aaaaaaaa-1111-0000-0000-000000000011"
 KYOSHI_KEYS = "aaaaaaaa-1111-0000-0000-000000000012"
 KYOSHI_ARMS = "aaaaaaaa-1111-0000-0000-000000000013"
 REN_BAG = "bbbbbbbb-2222-0000-0000-000000000011"
+# CHEST_CONTAINER stands at the base camp, reached through MapObjectSaveData.
+# ORPHAN_CONTAINER is claimed by no map object at all, which is what the save
+# leaves behind for bulk storage whose object is gone — big enough to keep,
+# unlike the single-slot ground drops that share its shape.
 CHEST_CONTAINER = "dddddddd-0000-0000-0000-000000000011"
+ORPHAN_CONTAINER = "dddddddd-0000-0000-0000-000000000012"
+LITTER_CONTAINER = "dddddddd-0000-0000-0000-000000000013"
+# The guild chest: owned by the guild, claimed by no map object, no position.
+GUILD_CONTAINER = "dddddddd-0000-0000-0000-000000000014"
 
 # Dynamic-item ids, joining a slot to its per-instance state.
 BOW_ITEM = "aaaaaaaa-1111-0000-0000-000000000021"
@@ -128,6 +136,51 @@ def _transform(x, y):
     }
 
 
+def map_object_entry(object_id, container_id, camp_id, guild_id, x, y):
+    """One MapObjectSaveData entry — a placed object owning an item container.
+
+    Two blobs matter. Model.RawData carries the base camp, guild and world
+    position, and runs on past them into fields the extractor deliberately
+    stops short of; the trailing junk here is what proves it stops. The
+    ItemContainer module blob leads with the container it targets, and the slot
+    attributes after it are likewise left unread.
+    """
+    w = FArchiveWriter()
+    w.guid(ZERO)          # instance id
+    w.guid(ZERO)          # concrete model instance id
+    w.guid(camp_id)
+    w.guid(guild_id)
+    w.i32(100)            # hp current
+    w.i32(100)            # hp max
+    w.ftransform(_transform(x, y))
+    w.write(b"\x7f" * 48)  # repair/owner/builder guids and whatever follows
+    model_raw = list(w.bytes())
+
+    w = FArchiveWriter()
+    w.guid(container_id)
+    w.write(b"\x5a" * 12)  # slot attributes, lock state, usage type
+    module_raw = list(w.bytes())
+
+    return {
+        "MapObjectId": name(object_id),
+        "Model": sp("PalMapObjectModel", {"RawData": bytearray_prop(model_raw)}),
+        "ConcreteModel": sp("PalMapObjectConcreteModel", {
+            "ModuleMap": {
+                "key_type": "EnumProperty",
+                "value_type": "StructProperty",
+                "key_struct_type": None,
+                "value_struct_type": "PalMapObjectConcreteModelModuleBase",
+                "id": None,
+                "value": [{
+                    "key": "EPalMapObjectConcreteModelModuleType::ItemContainer",
+                    "value": {"RawData": bytearray_prop(module_raw)},
+                }],
+                "type": "MapProperty",
+            },
+        }),
+    }
+
+
 def base_camp_entry(camp_id, guild_id, container_id, x, y):
     """One BaseCampSaveData entry: the camp blob the extractor reads for
     id/transform/guild, and the WorkerDirector blob it reads the worker
@@ -200,13 +253,16 @@ def dynamic_item_raw(dynamic_id, item_id, durability=None, ammo=0, passives=(), 
     return list(w.bytes())
 
 
-def item_container_entry(container_id, slot_num, slots):
+def item_container_entry(container_id, slot_num, slots, group_id=ZERO):
     """One ItemContainerSaveData entry. Slots carry their data packed into
     RawData rather than as properties, which is the layout that matters."""
     return {
         "key": {"ID": guid(container_id)},
         "value": {
-            "BelongInfo": sp("PalItemContainerBelongInfo", {"GroupId": guid(ZERO)}),
+            # A non-zero GroupId marks a container the guild owns rather than a
+            # player. Combined with no map object claiming it, that's the guild
+            # chest — see classify_storage.
+            "BelongInfo": sp("PalItemContainerBelongInfo", {"GroupId": guid(group_id)}),
             "SlotNum": i(slot_num),
             "Slots": {
                 "array_type": "StructProperty",
@@ -496,12 +552,55 @@ def main():
                         ]),
                         item_container_entry(CHEST_CONTAINER, 30, [
                             item_slot_raw(0, 999, "Wood"),
+                            # Gear in storage: its durability has to survive the
+                            # same dynamic-item join a worn weapon gets.
+                            item_slot_raw(1, 1, "Katana_2", SWORD_ITEM),
                         ]),
+                        item_container_entry(ORPHAN_CONTAINER, 54, [
+                            item_slot_raw(0, 5441, "Berries"),
+                        ]),
+                        item_container_entry(LITTER_CONTAINER, 1, [
+                            item_slot_raw(0, 1, "WheatSeeds"),
+                        ]),
+                        item_container_entry(GUILD_CONTAINER, 54, [
+                            item_slot_raw(0, 9999, "Tomato"),
+                        ], group_id=GUILD_ID),
                         item_container_entry(REN_BAG, 6, [
                             item_slot_raw(0, 1, "Katana_2", SWORD_ITEM),
                         ]),
                     ],
                     "type": "MapProperty",
+                },
+                # The chest above, standing at the base camp. Two objects, only
+                # one of which owns a container, so the walk has to skip past a
+                # module-less entry rather than assume every object has one.
+                "MapObjectSaveData": {
+                    "array_type": "StructProperty",
+                    "id": None,
+                    "value": {
+                        "prop_name": "MapObjectSaveData",
+                        "prop_type": "StructProperty",
+                        "values": [
+                            map_object_entry("ItemChest_03", CHEST_CONTAINER, CAMP_ID, GUILD_ID, 123400.0, -56700.0),
+                            {
+                                "MapObjectId": name("DefenseWall"),
+                                "Model": sp("PalMapObjectModel", {"RawData": bytearray_prop([])}),
+                                "ConcreteModel": sp("PalMapObjectConcreteModel", {
+                                    "ModuleMap": {
+                                        "key_type": "EnumProperty",
+                                        "value_type": "StructProperty",
+                                        "value_struct_type": "PalMapObjectConcreteModelModuleBase",
+                                        "id": None,
+                                        "value": [],
+                                        "type": "MapProperty",
+                                    },
+                                }),
+                            },
+                        ],
+                        "type_name": "PalMapObjectSaveData",
+                        "id": ZERO,
+                    },
+                    "type": "ArrayProperty",
                 },
                 "DynamicItemSaveData": {
                     "array_type": "StructProperty",

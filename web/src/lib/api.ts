@@ -126,7 +126,7 @@ export interface Server {
 
 /** Views that can be switched off per server. The keys are also the route
  * segments, so one string drives the nav link and the API's refusal. */
-export const FEATURES = ["map", "pals", "inventory", "paldex", "guilds", "calculators"] as const;
+export const FEATURES = ["map", "pals", "inventory", "storage", "paldex", "guilds", "calculators"] as const;
 export type Feature = (typeof FEATURES)[number];
 
 /** Kinds of data a single player can be withheld from. Coarser than the view
@@ -137,6 +137,7 @@ export type Stream = (typeof STREAMS)[number];
 
 export interface VisibilityResult {
   hiddenFeatures: string[];
+  hidePrivateStorage: boolean;
   /** player uid -> streams that player is withheld from. */
   players: Record<string, string[]>;
   roster: { uid: string; nickname: string; level: number }[];
@@ -149,6 +150,8 @@ export interface VisibilityResult {
 
 export interface VisibilityInput {
   hiddenFeatures: string[];
+  /** Whether the Storage view may search password-locked chests. */
+  hidePrivateStorage: boolean;
   players: Record<string, string[]>;
 }
 
@@ -575,6 +578,65 @@ export interface InventoryResult {
   saveModTime: string;
 }
 
+/**
+ * One searchable container in the world — a base's chest, a furnace's hopper,
+ * a treasure box on a hillside. Player bags aren't here; they're /inventory.
+ *
+ * `kind` is where it stands: "base" at a guild's camp, "world" for the loot the
+ * map places, "unplaced" for storage the save gives no position.
+ */
+export interface StorageContainer {
+  id: string;
+  /** "guild" is the guild chest: shared storage with no position, reached from
+   * any of the guild's chests. */
+  kind: "base" | "world" | "guild" | "unplaced";
+  /** Someone put a password on this chest. The password itself is never read
+   * out of the save, so this is all the page knows about it. */
+  private?: boolean;
+  /** Blueprint id of the object holding it; see lib/structures.ts. */
+  objectId: string;
+  size: number;
+  slots: ItemSlot[];
+  baseId?: string;
+  guildId?: string;
+  /** World coordinates, present together. Absent for unplaced storage. */
+  x?: number;
+  y?: number;
+}
+
+/** A base camp, named by the guild that owns it — a camp's own name in the
+ * save is an internal placeholder. */
+export interface StorageBase {
+  id: string;
+  guildId: string;
+  guildName: string;
+  /** Position in its guild's base list — the id the map marks it by. */
+  index: number;
+  x: number;
+  y: number;
+}
+
+/** Just enough to label a guild's chest. Sent apart from `bases` because a
+ * guild chest belongs to a guild without standing at any camp. */
+export interface StorageGuild {
+  id: string;
+  name: string;
+}
+
+export interface StorageResult {
+  containers: StorageContainer[];
+  bases: StorageBase[];
+  guilds: StorageGuild[];
+  /** False unless the request asked for world loot, so the view can say what
+   * it's leaving out rather than implying this is everything. */
+  includesWorld: boolean;
+  /** False when an admin has kept password-locked chests out of the index.
+   * The page says so rather than quietly returning fewer results. */
+  includesPrivate: boolean;
+  parsedAt: string;
+  saveModTime: string;
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<{ username: string }>("/login", { method: "POST", body: JSON.stringify({ username, password }) }),
@@ -682,6 +744,10 @@ export const api = {
   serverPals: (id: number) => request<PalsResult>(`/servers/${id}/pals`),
   serverGuilds: (id: number) => request<GuildsResult>(`/servers/${id}/guilds`),
   serverInventory: (id: number) => request<InventoryResult>(`/servers/${id}/inventory`),
+  // World loot is asked for explicitly: it's most of the payload, and most of
+  // it is the location of chests nobody has opened yet.
+  serverStorage: (id: number, world = false) =>
+    request<StorageResult>(`/servers/${id}/storage${world ? "?world=1" : ""}`),
   serverVisibility: (id: number) => request<VisibilityResult>(`/servers/${id}/visibility`),
   updateServerVisibility: (id: number, input: VisibilityInput) =>
     request<void>(`/servers/${id}/visibility`, { method: "PUT", body: JSON.stringify(input) }),

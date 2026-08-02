@@ -38,6 +38,7 @@ const ServerPaldex = lazy(() => import("./pages/ServerPaldex").then((m) => ({ de
 const ServerInventory = lazy(() =>
   import("./pages/ServerInventory").then((m) => ({ default: m.ServerInventory })),
 );
+const ServerStorage = lazy(() => import("./pages/ServerStorage").then((m) => ({ default: m.ServerStorage })));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { username, loading } = useAuth();
@@ -127,6 +128,16 @@ export function App() {
               <FeatureGate feature="inventory">
                 <Suspense fallback={<p className="p-6 text-muted-foreground">Loading…</p>}>
                   <ServerInventory />
+                </Suspense>
+              </FeatureGate>
+            }
+          />
+          <Route
+            path="/servers/:serverID/storage"
+            element={
+              <FeatureGate feature="storage">
+                <Suspense fallback={<p className="p-6 text-muted-foreground">Loading…</p>}>
+                  <ServerStorage />
                 </Suspense>
               </FeatureGate>
             }

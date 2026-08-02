@@ -9,12 +9,29 @@ Set both under **Settings → Who can see what** (admin only).
 ## Two switches
 
 **A feature** is a view an admin can turn off for a whole server: Live map,
-Player pals, Inventory, Paldex, Guilds, Calculators. Turning one off drops its
-link from the nav and makes the endpoints behind it refuse with 403.
+Player pals, Inventory, Storage, Paldex, Guilds, Calculators. Turning one off
+drops its link from the nav and makes the endpoints behind it refuse with 403.
 
 **A stream** is one player opting out of one kind of data: `pals`, `inventory`
 or `map`. The view stays on for everyone else; that player is filtered out of
 the payload.
+
+## Password-locked chests
+
+A player can put a password on a chest in-game. **Search password-locked
+chests**, beside the view switches, decides whether the Storage view indexes
+those at all — off, their contents never reach the browser, on any request.
+
+It is the one switch on this page admins do *not* bypass. A switch that says
+"don't search these" and then shows them to the person who set it reads as
+broken; the escape hatch is the same as everywhere else, in that only an admin
+can turn it back on. Readers also get their own "Exclude locked chests"
+checkbox in the view, which is a filter on what the server already sent — the
+admin switch is the one that decides what gets sent.
+
+`TestStorageForWithholdsPrivateChests` pins the server side. The password
+itself is never read out of the save; the extractor reads only whether one is
+set (see `read_map_object_containers`).
 
 ## Admins bypass both
 
@@ -48,6 +65,9 @@ Live map is on.
 | Feature off | Every endpoint that *only* that view uses returns 403; the nav link goes |
 | Player, `pals` | Dropped from `/pals` and from `/guilds` — and so from their guild's pal, alpha and dex rollups |
 | Player, `inventory` | Dropped from `/inventory` |
+| — | No stream covers `/storage`: a chest belongs to a base camp, not to whoever placed it, and the payload carries no player uid to filter on |
+| Locked chests off | Password-locked chests are dropped from `/storage` for everyone, admins included |
+| — | The guild chest rides on the Storage view's own switch; it belongs to a guild rather than a player, so no per-player stream covers it either |
 | Player, `map` | Last-known position blanked in `/guilds`; live coordinates blanked in `/players`. They keep their guild standing and still appear in the online count |
 
 `/pals` and `/guilds` serve an explicit projection (`api.palsPlayer`), not
@@ -58,6 +78,15 @@ Inventory switches don't govern, gated view and all. `TestPalsPayloadFields`
 fails if the projection grows a field, so adding one is a decision rather than
 a side effect.
 
+## World loot is a request, not a filter
+
+The Storage view searches base storage by default. The world's own treasure
+chests — several thousand of them, and most of the payload — only come back
+when the page asks with `?world=1`, which the "Include world loot" checkbox
+does. Filtering them out in the browser would have been simpler and would have
+meant every visit shipping the location of every unopened chest on the server
+to anyone who opened the page. `TestStorageForWithholdsWorldLoot` pins it.
+
 Marking the fields `json:"-"` would not have worked: the same struct is
 unmarshalled *from* the extractor's output, so hiding a field from the response
 hides it from the parse.
@@ -66,7 +95,7 @@ Turning the Live map off blanks live coordinates for everyone in `/players`
 without gating the endpoint, because the dashboard's online list reads it too —
 a name and a level aren't the private part.
 
-## Storage
+## How the switches are stored
 
 `servers.hidden_features` and the `player_visibility` table both record what is
 *hidden*, so the empty default means "everything visible" and no existing

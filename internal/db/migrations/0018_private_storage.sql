@@ -1,0 +1,13 @@
+-- Whether the Storage view may search chests a player has put a password on.
+--
+-- Stored as what is HIDDEN, like hidden_features above it, so the 0 default
+-- keeps every existing server behaving as it did and no migration changes what
+-- anyone can see. A password on a chest is the clearest statement a player can
+-- make that its contents are theirs, so an admin gets one switch that takes the
+-- whole category out of the index.
+--
+-- Unlike the view switches, this one is NOT bypassed for admins: a switch that
+-- says "don't search these" and then shows them to the person who set it reads
+-- as broken. Admins keep the escape hatch that matters — they are the only ones
+-- who can turn it back on.
+ALTER TABLE servers ADD COLUMN hide_private_storage INTEGER NOT NULL DEFAULT 0;

@@ -160,6 +160,31 @@ export function palEffectiveStats(pal: Pal): StatResult | null {
   });
 }
 
+/** Per-stat colors for effective HP / Attack / Defense, so the bars in the pal
+ * dialog and the triplets on the records board name the same stat the same
+ * way. */
+export const STAT_COLORS = { hp: "#5B9E6F", attack: "#E0502F", defense: "#5B8DEF" };
+
+/**
+ * One number for ranking pals against each other by raw strength.
+ *
+ * The three stats can't simply be summed: HP runs to five figures while attack
+ * and defense sit in the hundreds, so HP alone would decide every ranking. The
+ * scaling factor isn't invented — computeStats above grows HP by 0.5 per level
+ * and attack/defense by 0.075, while the species base values all share one
+ * ~60–200 range. Multiplying HP by 0.075/0.5 therefore puts all three back into
+ * base-stat units, and the total comes out proportional to the pal's effective
+ * base-stat sum times its level.
+ *
+ * Everything computeStats folds in rides along: level, talents, condenser,
+ * souls, trust, the alpha bonus, and the passives that move stats. Passives
+ * that don't (Lucky, work suitability, element damage) stay out, which is why
+ * a ranking by this is a strength ranking and not a "best pal" ranking.
+ */
+export function powerScore(s: StatResult): number {
+  return s.hp * 0.15 + s.attack + s.defense;
+}
+
 /** IV color cue, shared by every talent readout in the app: gold is a
  * perfect 100, green (70–99) is breeding stock, blue is below par. */
 export function talentTone(v: number): string {

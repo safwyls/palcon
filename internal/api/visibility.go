@@ -69,6 +69,11 @@ type rosterEntry struct {
 type visibilityPayload struct {
 	// Views switched off for everyone but admins.
 	HiddenFeatures []string `json:"hiddenFeatures"`
+	// Whether the Storage view may search password-locked chests. Not a
+	// view switch: it takes a category of container out of the index for
+	// everyone including admins, so it lives beside them rather than in
+	// them. See the 0018 migration for why admins don't bypass it.
+	HidePrivateStorage bool `json:"hidePrivateStorage"`
 	// player uid -> streams that player is withheld from.
 	Players map[string][]string `json:"players"`
 	// Everyone in the save, so the UI has a list to put switches against.
@@ -103,12 +108,13 @@ func (s *Server) handleServerVisibility(w http.ResponseWriter, r *http.Request) 
 		s.logger.Warn("visibility roster unavailable", "server", srv.ID, "error", rosterErr)
 	}
 	writeJSON(w, http.StatusOK, visibilityPayload{
-		HiddenFeatures:    srv.HiddenFeatures,
-		Players:           players,
-		Roster:            roster,
-		RosterUnavailable: rosterErr != nil,
-		AllFeatures:       store.AllFeatures,
-		AllStreams:        store.AllStreams,
+		HiddenFeatures:     srv.HiddenFeatures,
+		HidePrivateStorage: srv.HidePrivateStorage,
+		Players:            players,
+		Roster:             roster,
+		RosterUnavailable:  rosterErr != nil,
+		AllFeatures:        store.AllFeatures,
+		AllStreams:         store.AllStreams,
 	})
 }
 
@@ -138,14 +144,19 @@ func (s *Server) handleUpdateServerVisibility(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var req struct {
-		HiddenFeatures []string            `json:"hiddenFeatures"`
-		Players        map[string][]string `json:"players"`
+		HiddenFeatures     []string            `json:"hiddenFeatures"`
+		HidePrivateStorage bool                `json:"hidePrivateStorage"`
+		Players            map[string][]string `json:"players"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if err := s.store.SetHiddenFeatures(r.Context(), srv.ID, req.HiddenFeatures); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := s.store.SetHidePrivateStorage(r.Context(), srv.ID, req.HidePrivateStorage); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

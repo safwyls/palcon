@@ -25,9 +25,11 @@ All files live in `web/src/data/`:
 | `palDeck.json` | id → Paldeck label ("94", "94B") | palworld-save-pal `pals.json` (`pal_deck_index`); see `web/public/pal-icons/README.md` for the transform |
 | `mapPois.json` | map POI world coordinates by kind; fast travel + watchtower entries carry their English names (`[x, y, name]`) used as "near X" landmarks for bases | palworld-save-pal `fast_travel_points.json` (split on the `UnlockMapPoint` class) joined with `l10n/en/fast_travel_points.json` by GUID, and `map_objects.json` (dungeons, alpha/predator spawns), rounded to whole units |
 | `items.json` | item id → name, category, rarity, weight, icon, description, and the gear figures the inventory view shows (max durability, magazine size, attack, defense, built-in passives) | palworld-save-pal `items.json` joined with `l10n/en/items.json`; see `web/public/item-icons/README.md` |
+| `structures.json` | building id → build-menu name (`n`), category (`c`, upstream's `type_b`) and icon name (`i`), for the Storage view's container labels, its storage/farm/station grouping and its row icons | palworld-save-pal `buildings.json` joined with `l10n/en/buildings.json` by key; 489 entries trimmed to those three fields |
 
 Pal icons: `web/public/pal-icons/` — see the README there. Item icons:
-`web/public/item-icons/`, same arrangement and its own README. Map textures
+`web/public/item-icons/`, and structure icons `web/public/structure-icons/`,
+same arrangement and their own READMEs. Map textures
 (`web/public/palworld-map.webp`, `palworld-treemap.webp`) are vendored the
 same way: © Pocketpair, Inc., credited on-screen in the map view — see
 `web/public/README.md` for the fork/redistribution considerations.
@@ -45,6 +47,29 @@ point on simply wasn't there to notice.
 The frontend's display order for those stats lives in `ADVENTURE_STATS`
 (`web/src/pages/ServerInventory.tsx`) and mirrors the same source, so every
 player's build panel reads in one order.
+
+### Why structures.json is worth the refresh
+
+The Storage view names the chest an item is sitting in, and a wrong name sends
+someone to the wrong chest. These were hand-written from memory first, and the
+guesses were wrong in ways the UI could never reveal: `ItemChest_02` is the
+**Metal Chest**, not the "Iron Chest"; `BlastFurnace3` is the **Electric
+Furnace**, not an "improved" one; `WorkBench_SkillUnlock` is the **Pal Gear
+Workbench** and has nothing to do with skill fruit. Prefer the catalog over
+judgement here, and let unknown ids fall back to the humanized id.
+
+Upstream covers buildings only. The world's own objects — treasure chests,
+ground drops, wild eggs — are named by `WORLD_OBJECTS` in
+`web/src/lib/structures.ts`, which is the easy half: nobody finds a treasure
+chest by name. Coverage against a real save is 45 catalog + 12 hand-written,
+with no humanized fallbacks.
+
+Icons come from the same upstream (`ui/src/lib/assets/img/t_icon_buildobject_*.webp`).
+Upstream has 505; only the 159 that can own an item container are vendored, since
+a foundation's icon is weight the Storage view can never draw — see
+`web/public/structure-icons/README.md` for the selection rule. `i` is recorded in
+the catalog only when the file is actually vendored, so a missing icon is a row
+without a picture rather than a failed request.
 
 ## Constants that drift with game patches
 

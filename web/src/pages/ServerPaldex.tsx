@@ -1,19 +1,26 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Crown, Sparkles, Swords, Target } from "lucide-react";
+import { ChevronDown, Crown, Dumbbell, Sparkles, Swords, Target } from "lucide-react";
 import { api, ApiError, type Pal, type PlayerPals } from "../lib/api";
 import {
   DECK_BASE_ENTRIES,
   DECK_UNCATCHABLE_ENTRIES,
   DECK_VARIANT_ENTRIES,
+  elementColor,
   palDeckNo,
+  palDeckSortValue,
+  palEntry,
   palIconUrl,
   palName,
+  passiveTier,
 } from "../lib/paldex";
 import { initials, playerColor } from "../lib/palette";
 import { cn } from "../lib/utils";
+import { palEffectiveStats, powerScore } from "../lib/stats";
 import { PalPortrait } from "../components/PalPortrait";
+import { PassiveTierTile } from "../components/PassiveBadge";
+import { StatTriplet } from "../components/StatTriplet";
 import { TalentTriplet } from "../components/TalentTriplet";
 import { TIER_LOOKS, TierTile, type TierLook } from "../components/TierTile";
 import { SavePathSetup } from "../components/SavePathSetup";
@@ -37,6 +44,25 @@ function deckLabels(p: PlayerPals): Set<string> {
   return out;
 }
 
+/**
+ * Deck labels of the species a player has actually thrown a sphere at.
+ *
+ * The save keeps two separate records and they mean different things:
+ * PaldeckUnlockFlag registers a species however it was acquired — caught,
+ * hatched, traded, awarded — while PalCaptureCount only ever counts sphere
+ * captures. The difference between them is the one thing the save says about
+ * how a pal was obtained; nothing on an individual pal records its origin.
+ */
+function sphereCaughtLabels(p: PlayerPals): Set<string> {
+  const out = new Set<string>();
+  for (const [characterId, count] of Object.entries(p.captures ?? {})) {
+    if (count <= 0) continue;
+    const label = palDeckNo(characterId);
+    if (label) out.add(label);
+  }
+  return out;
+}
+
 /** Deck labels of the species a player currently owns, for flagging
  * "in the box but never registered" (a traded-in pal doesn't write the
  * receiver's dex — verified against a real save). */
@@ -52,6 +78,9 @@ function ownedLabels(p: PlayerPals): Set<string> {
 const BASE_ENTRIES = DECK_BASE_ENTRIES;
 const VARIANT_ENTRIES = DECK_VARIANT_ENTRIES;
 const UNCATCHABLE = DECK_UNCATCHABLE_ENTRIES;
+
+/** One Paldeck slot: its in-game number and an id to draw it by. */
+type DeckEntry = { label: string; characterId: string };
 
 /**
  * The hero wears the game's passive-tier tiles as the server levels up:
@@ -80,7 +109,20 @@ function PlayerChip({ name }: { name: string }) {
   );
 }
 
-function MissingChip({ entry, owned }: { entry: { label: string; characterId: string }; owned: boolean }) {
+function DexChip({
+  entry,
+  owned,
+  ownedText = "owned",
+  title,
+}: {
+  entry: DeckEntry;
+  owned: boolean;
+  /** The word on the amber marker — "owned" reads as the player's own box on
+   * the per-player lists, but as somebody's box on the server-wide board. */
+  ownedText?: string;
+  /** Overrides the hover text, for lists where the species isn't missing. */
+  title?: string;
+}) {
   return (
     <span
       className={cn(
@@ -88,15 +130,16 @@ function MissingChip({ entry, owned }: { entry: { label: string; characterId: st
         owned ? "border-brand-amber/60 ring-1 ring-brand-amber/40" : "border-ink/10",
       )}
       title={
-        owned
+        title ??
+        (owned
           ? `${palName(entry.characterId)} — in their box but not registered; the dex only counts pals they acquired themselves (a traded pal doesn't register).`
-          : palName(entry.characterId)
+          : palName(entry.characterId))
       }
     >
       <img src={palIconUrl(entry.characterId)} alt="" loading="lazy" className="h-5 w-5 object-contain" />
       <span className="font-mono text-[10px] text-ink/40">#{entry.label}</span>
       <span className="max-w-[7rem] truncate text-xs text-ink/70">{palName(entry.characterId)}</span>
-      {owned && <span className="text-[10px] font-semibold text-brand-amber">owned</span>}
+      {owned && <span className="text-[10px] font-semibold text-brand-amber">{ownedText}</span>}
     </span>
   );
 }
@@ -114,6 +157,19 @@ function CompletionRow({ player }: { player: PlayerPals }) {
   const ownedUnregistered = useMemo(
     () => [...missingBase, ...missingVariants].filter((e) => owned.has(e.label)).length,
     [missingBase, missingVariants, owned],
+  );
+
+  // Registered species with no sphere capture behind them: hatched, traded or
+  // awarded. Skipped entirely when the save carries no capture record at all,
+  // because "no captures recorded" would otherwise render as "never caught any
+  // of them" — a confident claim built on missing data.
+  const sphereCaught = useMemo(() => sphereCaughtLabels(player), [player]);
+  const neverCaught = useMemo(
+    () =>
+      sphereCaught.size === 0
+        ? []
+        : [...BASE_ENTRIES, ...VARIANT_ENTRIES].filter((e) => caught.has(e.label) && !sphereCaught.has(e.label)),
+    [caught, sphereCaught],
   );
   // A player file with no dex record reads as zero registered while they
   // plainly own pals — that's missing data, not a 0% player.
@@ -174,7 +230,7 @@ function CompletionRow({ player }: { player: PlayerPals }) {
                   </p>
                   <div className="flex max-h-64 flex-wrap gap-1.5 overflow-y-auto">
                     {missingBase.map((e) => (
-                      <MissingChip key={e.label} entry={e} owned={owned.has(e.label)} />
+                      <DexChip key={e.label} entry={e} owned={owned.has(e.label)} />
                     ))}
                   </div>
                 </div>
@@ -187,12 +243,37 @@ function CompletionRow({ player }: { player: PlayerPals }) {
                   </p>
                   <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
                     {missingVariants.map((e) => (
-                      <MissingChip key={e.label} entry={e} owned={owned.has(e.label)} />
+                      <DexChip key={e.label} entry={e} owned={owned.has(e.label)} />
                     ))}
                   </div>
                 </div>
               )}
             </>
+          )}
+
+          {/* Outside the missing/complete branch on purpose: a finished Paldex
+              is exactly where "which of these did they never actually catch"
+              is the interesting question. */}
+          {neverCaught.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink/35">
+                Never caught one · {neverCaught.length}
+              </p>
+              <p className="mb-2 text-xs text-ink/45">
+                Registered, but the save records no sphere capture for them — hatched, traded or awarded. Catching
+                one later takes it off this list.
+              </p>
+              <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+                {neverCaught.map((e) => (
+                  <DexChip
+                    key={e.label}
+                    entry={e}
+                    owned={false}
+                    title={`${palName(e.characterId)} — registered without a sphere capture on record. The save counts captures per species, so this only means they never caught one of these.`}
+                  />
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -200,17 +281,163 @@ function CompletionRow({ player }: { player: PlayerPals }) {
   );
 }
 
+/**
+ * One wanted poster: the pal printed as a faded sepia photograph, because
+ * nobody on the server has seen one. Hover or keyboard focus develops it into
+ * full colour. Nothing is actually hidden — the number, name and element are
+ * all text — so the reveal stays a flourish rather than something you have to
+ * find.
+ *
+ * A print rather than a silhouette on purpose: about half the vendored icons
+ * are cropped close-ups with no transparency, and masking those to a shape
+ * gives a black rectangle. A colour filter reads the same on both kinds.
+ */
+function BountyPoster({ entry }: { entry: DeckEntry }) {
+  const element = palEntry(entry.characterId)?.elements[0];
+  return (
+    <figure
+      className="group relative rounded-lg border border-ink/10 bg-white px-3 pb-3 pt-3"
+      title={`${palName(entry.characterId)} — no player has registered one, and none is in a box on the server.`}
+    >
+      <div className="mx-auto h-20 w-20 overflow-hidden rounded-md border border-ink/10 bg-paper">
+        <img
+          src={palIconUrl(entry.characterId)}
+          alt=""
+          loading="lazy"
+          className="h-full w-full object-contain [filter:grayscale(1)_sepia(0.6)_brightness(0.94)_contrast(1.12)] transition-[filter] duration-300 group-hover:[filter:none] group-focus-within:[filter:none] motion-reduce:transition-none"
+        />
+      </div>
+      {/* Struck off-register at the poster's corner rather than centred, so it
+          reads as stamped on rather than laid out. It clears the print at wide
+          widths and grazes it at narrow ones, which is why it doesn't multiply
+          into the card: over a dark photograph multiply turns the red
+          near-black and the word disappears, and over the white margin — where
+          it sits the rest of the time — the blend does nothing at all.
+          Decorative: the section heading already says these are wanted, so it
+          stays out of the accessibility tree. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-3 top-2 -rotate-[8deg] rounded-[3px] border border-brand-red/70 px-1.5 py-px font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-brand-red"
+      >
+        Wanted
+      </span>
+      <figcaption className="mt-1.5 text-center">
+        <span className="block truncate font-display text-sm font-bold">{palName(entry.characterId)}</span>
+        <span className="mt-0.5 flex flex-wrap items-center justify-center gap-x-1.5 text-[11px] text-ink/45">
+          <span className="font-mono">#{entry.label}</span>
+          {element && (
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: elementColor(element) }} />
+              {element}
+            </span>
+          )}
+        </span>
+      </figcaption>
+    </figure>
+  );
+}
+
+/**
+ * Species not one player on the server has registered — the inverse of the
+ * hero's percentage, so it sits directly beneath it.
+ *
+ * `owned` is the union of everybody's boxes: a species somebody physically has
+ * but nobody registered isn't really at large, so it's marked on the list and
+ * kept out of the most-wanted picks.
+ */
+function BountyBoard({ caught, owned }: { caught: Set<string>; owned: Set<string> }) {
+  const { wanted, rest, total } = useMemo(() => {
+    const all = [...BASE_ENTRIES, ...VARIANT_ENTRIES]
+      .filter((e) => !caught.has(e.label))
+      .sort((a, b) => palDeckSortValue(a.characterId) - palDeckSortValue(b.characterId));
+    // Rarest first — the game's own rarity number, so the picks are the
+    // hardest targets rather than whatever sorts to the top.
+    const wanted = all
+      .filter((e) => !owned.has(e.label))
+      .sort(
+        (a, b) =>
+          (palEntry(b.characterId)?.rarity ?? 0) - (palEntry(a.characterId)?.rarity ?? 0) ||
+          palDeckSortValue(b.characterId) - palDeckSortValue(a.characterId),
+      )
+      .slice(0, 4);
+    const featured = new Set(wanted.map((e) => e.label));
+    return { wanted, rest: all.filter((e) => !featured.has(e.label)), total: all.length };
+  }, [caught, owned]);
+
+  return (
+    <section className="rounded-xl border border-ink/10 bg-ink/[0.035]">
+      <div className="flex items-baseline justify-between gap-3 border-b border-ink/5 px-5 py-4">
+        <div>
+          <h2 className="font-display text-base font-bold">Pal Bounty Board</h2>
+          <p className="mt-0.5 text-xs text-ink/50">Species no player on this server has registered yet.</p>
+        </div>
+        {total > 0 && (
+          <span className="shrink-0 font-mono text-sm font-semibold tabular-nums text-brand-red">
+            {total} at large
+          </span>
+        )}
+      </div>
+
+      {total === 0 ? (
+        <p className="px-5 py-6 text-sm text-ink/60">
+          The board is clear — between them, the players have registered every catchable species. 🎉
+        </p>
+      ) : (
+        <div className="space-y-4 px-5 py-4">
+          {wanted.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/35">
+                Most wanted
+                <span className="ml-1 normal-case text-ink/30">(rarest first)</span>
+              </p>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {wanted.map((e) => (
+                  <BountyPoster key={e.label} entry={e} />
+                ))}
+              </div>
+            </div>
+          )}
+          {rest.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/35">
+                Also at large · {rest.length}
+              </p>
+              <div className="flex max-h-72 flex-wrap gap-1.5 overflow-y-auto">
+                {rest.map((e) => (
+                  <DexChip
+                    key={e.label}
+                    entry={e}
+                    owned={owned.has(e.label)}
+                    ownedText="in a box"
+                    title={
+                      owned.has(e.label)
+                        ? `${palName(e.characterId)} — somebody has one in a box, but no player has registered it. Traded-in pals don't register.`
+                        : `${palName(e.characterId)} — no player has registered one.`
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function RecordCard({
   icon,
   title,
   children,
+  className,
 }: {
   icon: React.ReactNode;
   title: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <section className="rounded-xl border border-ink/10 bg-white">
+    <section className={cn("rounded-xl border border-ink/10 bg-white", className)}>
       <div className="flex items-center gap-2 border-b border-ink/5 px-5 py-3.5">
         {icon}
         <h3 className="font-display text-sm font-bold">{title}</h3>
@@ -256,6 +483,13 @@ export function ServerPaldex() {
     () => VARIANT_ENTRIES.filter((e) => serverCaught.has(e.label)).length,
     [serverCaught],
   );
+  /** Every box on the server, for the bounty board's "somebody has one but
+   * nobody registered it" case. */
+  const serverOwned = useMemo(() => {
+    const union = new Set<string>();
+    for (const p of players) for (const label of ownedLabels(p)) union.add(label);
+    return union;
+  }, [players]);
 
   // Every player showing an empty dex while owning pals means the save's
   // Players/*.sav records weren't readable — say so instead of rendering a
@@ -272,11 +506,39 @@ export function ServerPaldex() {
       for (const pal of allPals(p)) owned.push({ pal, owner });
     }
 
-    const best = [...owned]
-      .sort(
-        (a, b) =>
-          b.pal.talentHp + b.pal.talentShot + b.pal.talentDefense - (a.pal.talentHp + a.pal.talentShot + a.pal.talentDefense),
-      )
+    // Scored once and read by both records below: estimating stats per pal is
+    // cheap, but doing it inside a sort comparator over every pal on the
+    // server is not.
+    const scored = owned.map(({ pal, owner }) => {
+      const eff = palEffectiveStats(pal);
+      return {
+        pal,
+        owner,
+        eff,
+        iv: pal.talentHp + pal.talentShot + pal.talentDefense,
+        power: eff ? powerScore(eff) : 0,
+        // The game's own passive ranking, summed: Rainbow and World Tree
+        // passives count 4 and 5, ordinary ones 1–3, and a negative passive
+        // subtracts. Only used to order equal talent rolls.
+        passiveRank: pal.passives.reduce((n, code) => n + passiveTier(code), 0),
+      };
+    });
+
+    // Talent rolls, and nothing else — a level-1 pal can top this list, which
+    // is the point: it's the breeding record. IV total caps at 300 and plenty
+    // of pals reach it (93 of them in the sample world), so ties break on the
+    // other half of a breeding pal — the quality of its passive set — rather
+    // than on whatever order the save happened to store them in. Deliberately
+    // not by strength: that would just reprint the Strongest card.
+    const best = [...scored].sort((a, b) => b.iv - a.iv || b.passiveRank - a.passiveRank).slice(0, 25);
+
+    // The other record: who actually hits hardest right now. Species, level,
+    // condenser, souls, trust and stat passives all count — see powerScore.
+    // Pals of a species the combat catalog doesn't cover can't be estimated,
+    // so they drop out rather than rank as zero.
+    const strongest = scored
+      .flatMap((x) => (x.eff ? [{ ...x, eff: x.eff }] : []))
+      .sort((a, b) => b.power - a.power)
       .slice(0, 25);
 
     const captures = players
@@ -328,7 +590,7 @@ export function ServerPaldex() {
       .sort((a, b) => parseInt(b.label, 10) - parseInt(a.label, 10))
       .slice(0, 25);
 
-    return { best, captures, hunters, rarest };
+    return { best, strongest, captures, hunters, rarest };
   }, [players]);
 
   if (serverQuery.isLoading) return <p className="p-6 text-muted-foreground">Loading...</p>;
@@ -405,6 +667,14 @@ export function ServerPaldex() {
               );
             })()}
 
+            {/* Directly under the hero on purpose: it's the same number read
+                from the other end — what the server has left to catch.
+                Skipped when the dex records didn't load, where "nobody has
+                caught these" would be a claim about missing data. */}
+            {players.length > 0 && !recordsUnavailable && (
+              <BountyBoard caught={serverCaught} owned={serverOwned} />
+            )}
+
             <section className="rounded-xl border border-ink/10 bg-white">
               <div className="border-b border-ink/5 px-5 py-4">
                 <h2 className="font-display text-base font-bold">Completion by player</h2>
@@ -429,28 +699,84 @@ export function ServerPaldex() {
 
             <h2 className="pt-2 font-display text-base font-bold">Server records</h2>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <RecordCard icon={<Sparkles className="h-4 w-4 text-brand-amber" />} title="Best pals · IV total">
+              <RecordCard icon={<Sparkles className="h-4 w-4 text-brand-amber" />} title="Best rolls · IV total">
                 {records.best.length === 0 ? (
                   <p className="py-2 text-sm text-ink/60">No pals in the save yet.</p>
                 ) : (
-                  // Top 25, scrolling after roughly the first six — the
-                  // half-visible row is the scroll affordance.
-                  <ul className="max-h-80 divide-y divide-ink/5 overflow-y-auto pr-1">
-                    {records.best.map(({ pal, owner }) => (
-                      <li key={pal.instanceId} className="flex items-center gap-3 py-2">
-                        <PalPortrait characterId={pal.characterId} size="sm" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-semibold">
-                            {pal.nickname || palName(pal.characterId)}
+                  <>
+                    <p className="pb-1 text-xs text-ink/45">
+                      Talents as hatched or caught, so level doesn't count. Equal rolls break on passive tier.
+                    </p>
+                    {/* Top 25, scrolling after roughly the first six — the
+                        half-visible row is the scroll affordance. */}
+                    <ul className="max-h-80 divide-y divide-ink/5 overflow-y-auto pr-1">
+                      {records.best.map(({ pal, owner }) => (
+                        <li key={pal.instanceId} className="flex items-center gap-3 py-2">
+                          <PalPortrait characterId={pal.characterId} size="sm" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold">
+                              {pal.nickname || palName(pal.characterId)}
+                            </span>
+                            <span className="block truncate text-xs text-ink/45">
+                              <PlayerChip name={owner} />
+                            </span>
                           </span>
-                          <span className="block truncate text-xs text-ink/45">
-                            <PlayerChip name={owner} />
+                          <span className="shrink-0 text-right">
+                            <TalentTriplet
+                              hp={pal.talentHp}
+                              attack={pal.talentShot}
+                              defense={pal.talentDefense}
+                              className="font-mono text-xs"
+                            />
+                            {/* The tiebreak, made visible: unranked passives
+                                render nothing, so a fuller strip is a better
+                                set. */}
+                            <span className="mt-1 flex justify-end gap-0.5">
+                              {pal.passives.map((code, i) => (
+                                <PassiveTierTile key={`${code}-${i}`} code={code} />
+                              ))}
+                            </span>
                           </span>
-                        </span>
-                        <TalentTriplet hp={pal.talentHp} attack={pal.talentShot} defense={pal.talentDefense} />
-                      </li>
-                    ))}
-                  </ul>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </RecordCard>
+
+              <RecordCard icon={<Dumbbell className="h-4 w-4 text-pal-green" />} title="Strongest pals">
+                {records.strongest.length === 0 ? (
+                  <p className="py-2 text-sm text-ink/60">No pals with stat data in the save yet.</p>
+                ) : (
+                  <>
+                    <p className="pb-1 text-xs text-ink/45">
+                      Estimated stats at their current level, with condenser, souls, trust and stat passives counted.
+                    </p>
+                    <ul className="max-h-80 divide-y divide-ink/5 overflow-y-auto pr-1">
+                      {records.strongest.map(({ pal, owner, eff }) => (
+                        <li key={pal.instanceId} className="flex items-center gap-3 py-2">
+                          <PalPortrait characterId={pal.characterId} size="sm" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold">
+                              {pal.nickname || palName(pal.characterId)}
+                            </span>
+                            <span className="block truncate text-xs text-ink/45">
+                              <PlayerChip name={owner} />
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-right">
+                            <span className="block font-mono text-[11px] text-ink/40">Lv.{pal.level}</span>
+                            <StatTriplet
+                              hp={eff.hp}
+                              attack={eff.attack}
+                              defense={eff.defense}
+                              className="font-mono text-xs"
+                            />
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
               </RecordCard>
 
@@ -500,7 +826,13 @@ export function ServerPaldex() {
                 )}
               </RecordCard>
 
-              <RecordCard icon={<Target className="h-4 w-4 text-pal-blue" />} title="Most captures">
+              {/* Five cards in a two-column grid, so the last one takes the
+                  full row rather than leaving a half-width orphan. */}
+              <RecordCard
+                icon={<Target className="h-4 w-4 text-pal-blue" />}
+                title="Most captures"
+                className="lg:col-span-2"
+              >
                 {records.captures.length === 0 ? (
                   <p className="py-2 text-sm text-ink/60">No captures recorded yet.</p>
                 ) : (

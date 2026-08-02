@@ -13,6 +13,7 @@ const (
 	FeatureMap         = "map"
 	FeaturePals        = "pals"
 	FeatureInventory   = "inventory"
+	FeatureStorage     = "storage"
 	FeaturePaldex      = "paldex"
 	FeatureGuilds      = "guilds"
 	FeatureCalculators = "calculators"
@@ -20,7 +21,7 @@ const (
 
 // AllFeatures is the menu the settings UI offers, in nav order.
 var AllFeatures = []string{
-	FeatureMap, FeaturePals, FeatureInventory, FeaturePaldex, FeatureGuilds, FeatureCalculators,
+	FeatureMap, FeaturePals, FeatureInventory, FeatureStorage, FeaturePaldex, FeatureGuilds, FeatureCalculators,
 }
 
 // Streams a single player can be withheld from. Deliberately coarser than the
@@ -78,6 +79,18 @@ func Hidden(list []string, key string) bool {
 		}
 	}
 	return false
+}
+
+// SetHidePrivateStorage switches whether the Storage view may search chests a
+// player has put a password on.
+func (s *Store) SetHidePrivateStorage(ctx context.Context, serverID int64, hide bool) error {
+	v := 0
+	if hide {
+		v = 1
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE servers SET hide_private_storage = ? WHERE id = ?`, v, serverID)
+	return err
 }
 
 // SetHiddenFeatures replaces the server's disabled-view list.

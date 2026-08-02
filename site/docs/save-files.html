@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reading save files — Palcon docs</title>
-<meta name="description" content="How Player pals, Inventory, Guilds and Paldex work — and why Palcon can never write a save.">
+<meta name="description" content="How Player pals, Inventory, Storage, Guilds and Paldex work — and why Palcon can never write a save.">
 <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="../assets/favicon-192.png">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Reading save files — Palcon docs">
-<meta property="og:description" content="How Player pals, Inventory, Guilds and Paldex work — and why Palcon can never write a save.">
+<meta property="og:description" content="How Player pals, Inventory, Storage, Guilds and Paldex work — and why Palcon can never write a save.">
 <meta property="og:url" content="https://safwyls.github.io/palcon/docs/save-files.html">
 <meta property="og:image" content="https://safwyls.github.io/palcon/assets/og.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -106,14 +106,15 @@
     <p class="breadcrumb"><a href="index.html">Docs</a> <span>/</span> Configuration <span>/</span> Reading save files</p>
     <h1>Reading save files</h1>
 
-<p class="lead">Party composition, palbox contents, per-pal stats, player inventories and guilds
-aren't exposed by REST or RCON at all, so those views read <code>Level.sav</code> (Unreal's GVAS
-format) directly. Read-only, as a hard rule — the save is only ever opened for reading.</p>
+<p class="lead">Party composition, palbox contents, per-pal stats, player inventories, what's in
+every chest on the map, and guilds aren't exposed by REST or RCON at all, so those views read
+<code>Level.sav</code> (Unreal's GVAS format) directly. Read-only, as a hard rule — the save is only ever opened for reading.</p>
 
 <h2 id="what-you-get">What the save gives you</h2>
-<p>One parse feeds every save-derived view: <b>Player pals</b>, <b>Inventory</b>, <b>Paldex</b>,
-<b>Guilds</b>, the <b>Calculators</b>' pal picker, and the offline positions on the
-<b>Live map</b>. Opening several of them costs one read, not several.</p>
+<p>One parse feeds every save-derived view: <b>Player pals</b>, <b>Inventory</b>,
+<b>Storage</b>, <b>Paldex</b>, <b>Guilds</b>, the <b>Calculators</b>' pal picker, and the
+offline positions on the <b>Live map</b>. Opening several of them costs one read, not
+several.</p>
 
 <figure class="doc-shot">
   <img src="../assets/inventory.webp" loading="lazy" width="1600" height="1000"
@@ -143,6 +144,50 @@ format) directly. Read-only, as a hard rule — the save is only ever opened for
     exact item — condition is the instance's own wear, not the type's.</figcaption>
 </figure>
 
+
+<h3 id="storage">Storage</h3>
+<p>Everything the world holds that isn't in a player's bag: base chests, feed boxes,
+refrigerators, breeding farms, ore pits and the input hoppers of every work station. One search
+covers all of them at once and answers with a distribution — how much exists, and how it splits
+across the places holding it.</p>
+<ul>
+  <li><b>Containers are named and pictured</b> from the game's own build menu, so a result points
+    at a <i>Refined Metal Chest</i> rather than "a chest". Bases are labelled by the landmark they
+    sit near, the way the map labels them.</li>
+  <li><b>Guild chests are included.</b> Their placed chests never name a container in the save —
+    the only thing tying the chest to its contents is the container's own guild id — so shared
+    guild stock would otherwise be invisible.</li>
+  <li><b>Password-locked chests are marked</b> with a lock and can be excluded from results.
+    Whether they're searchable at all is an admin switch; see
+    <a href="users.html#visibility">Who can see what</a>.</li>
+  <li><b>The world's treasure chests are off by default</b> and sit behind a spoiler prompt. They
+    are roughly nine tenths of the containers on a map, and their locations are the game someone
+    is still playing — so they're a separate request rather than a filter applied after the fact.</li>
+</ul>
+
+<figure class="doc-shot">
+  <img src="../assets/storage.webp" loading="lazy" width="1600" height="1000"
+    alt="Storage search for ingot: 11,950 across 7 containers in 4 places, split between the guild chest and three bases">
+  <figcaption>A search answers with the split, not just the total — here most of the server's
+    ingots are in the guild chest, and the rest are spread across three bases.</figcaption>
+</figure>
+
+
+
+<h3 id="paldex">Paldex</h3>
+<p>The save keeps two separate records per player, and they don't mean the same thing:</p>
+<ul>
+  <li><b>The dex registers a species however it was acquired</b> — caught, hatched, traded or
+    awarded — and it stays registered after the pal is gone. That's what completion counts.</li>
+  <li><b>The capture count only ever counts sphere captures.</b></li>
+</ul>
+<p>The gap between them is the only thing the save says about how a pal was obtained: a species
+that's registered with no capture behind it was hatched, traded or given. Palcon lists those under
+<b>Never caught one</b> in a player's expanded row.</p>
+<div class="callout note"><p>It's a statement about a <i>species</i>, not a pal. Nothing on an
+individual pal records its origin — the fields are level, IVs, passives, owner history and
+condition, and none of them says "hatched". So a species someone has both caught and hatched just
+looks caught, and catching one later removes it from the list.</p></div>
 
 <h2 id="setup">Setup</h2>
 <p>Mount the world save directory into Palcon's container read-only (the

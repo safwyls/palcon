@@ -233,6 +233,101 @@ func (s *Server) handleServerInventory(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// storageBase is a base camp the storage view groups containers under. Named
+// by its guild because a camp's own name in the save is an internal
+// placeholder — see parse_base_camps in the extractor.
+//
+// This much guild identity rides along regardless of the guilds view's own
+// switch: without it a base camp is a bare pair of coordinates, and the view
+// stops making sense. It is deliberately less than /guilds serves — no member
+// roster, no pal totals.
+type storageBase struct {
+	ID        string `json:"id"`
+	GuildID   string `json:"guildId"`
+	GuildName string `json:"guildName"`
+	// Index is the camp's position in its guild's base list, which is what
+	// names its marker on the map — so a container here can link straight to
+	// the pin the map already draws for it.
+	Index int     `json:"index"`
+	X     float64 `json:"x"`
+	Y     float64 `json:"y"`
+}
+
+// storageFor picks the containers a request should see.
+//
+// Both exclusions are applied here rather than in the browser, so "off" means
+// the contents never leave the process instead of the page receiving them and
+// choosing not to draw them. They're switched by different people, though:
+// world loot is the reader's own choice per request, while private chests are
+// an admin's standing decision for the whole server.
+func storageFor(all []palsave.StorageContainer, world, private bool) []palsave.StorageContainer {
+	out := make([]palsave.StorageContainer, 0, len(all))
+	for _, c := range all {
+		if c.Kind == palsave.KindWorld && !world {
+			continue
+		}
+		if c.Private && !private {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// storageGuild names a guild for the storage view — enough to label its guild
+// chest, and deliberately nothing more.
+type storageGuild struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// handleServerStorage serves the storage search: every non-player container in
+// the world, with the base camp each one stands at.
+//
+// World loot (the treasure boxes scattered across the map) is left out unless
+// ?world=1 asks for it. It's roughly nine tenths of both the container count
+// and the payload, and a search for "where is our cement" should not have to
+// wade through four thousand map chests to answer — nor should opening the
+// page hand someone the location of every unopened chest on the server.
+func (s *Server) handleServerStorage(w http.ResponseWriter, r *http.Request) {
+	// No per-player visibility pass: a chest belongs to a base camp, not to
+	// the player who happened to place it, and the payload carries no uid.
+	result, srv, ok := s.readSaveForRequest(w, r, store.FeatureStorage)
+	if !ok {
+		return
+	}
+	world := r.URL.Query().Get("world") == "1"
+	// The admin's switch decides whether locked chests are indexed at all;
+	// the reader's "exclude private" checkbox is a view filter on top of what
+	// this serves, since fifteen chests aren't worth a second round trip.
+	private := !srv.HidePrivateStorage
+	containers := storageFor(result.Storage, world, private)
+
+	bases := make([]storageBase, 0)
+	// Guilds ride along separately from their bases: the guild chest belongs to
+	// a guild without standing at any camp, so a guild with no base at all
+	// would otherwise have nothing to name it by.
+	guilds := make([]storageGuild, 0, len(result.Guilds))
+	for _, g := range result.Guilds {
+		guilds = append(guilds, storageGuild{ID: g.ID, Name: g.Name})
+		for i, b := range g.Bases {
+			bases = append(bases, storageBase{ID: b.ID, GuildID: g.ID, GuildName: g.Name, Index: i, X: b.X, Y: b.Y})
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"containers": containers,
+		"bases":      bases,
+		"guilds":     guilds,
+		// So the page can say what it is and isn't showing rather than
+		// implying the world holds only what's on screen.
+		"includesWorld":   world,
+		"includesPrivate": private,
+		"parsedAt":        result.ParsedAt,
+		"saveModTime":     result.SaveModTime,
+	})
+}
+
 // handleServerGuilds serves the guild view. Backed by the same cached save
 // read as /pals, so opening both costs one parse.
 //

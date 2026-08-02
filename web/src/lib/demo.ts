@@ -35,13 +35,17 @@ import type {
   Settings,
   SteamJob,
   SteamUpdateStatus,
+  StorageContainer,
+  StorageResult,
 } from "./api";
 
 // ---------------------------------------------------------------------------
 // The captured world. Loaded once, timestamps freshened so "parsed 2m ago"
 // style labels stay plausible years after the capture.
 
-type Fixture = PalsResult;
+/** The capture carries the storage array too, which PalsResult itself doesn't
+ * — /pals has no use for it, but one fixture backs every save-derived page. */
+type Fixture = PalsResult & { storage?: StorageContainer[] };
 let fixturePromise: Promise<Fixture> | null = null;
 
 async function world(): Promise<Fixture> {
@@ -116,6 +120,7 @@ const state = {
   // Mutated by the visibility PUT so the demo's switches actually do something
   // for the rest of the session.
   playerVisibility: {} as Record<string, string[]>,
+  hidePrivateStorage: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -155,11 +160,35 @@ async function visibility(): Promise<VisibilityResult> {
   const fx = await world();
   return {
     hiddenFeatures: SERVER.hiddenFeatures,
+    hidePrivateStorage: state.hidePrivateStorage,
     players: state.playerVisibility,
     roster: fx.players.map((p) => ({ uid: p.uid, nickname: p.nickname, level: p.level })),
     rosterUnavailable: false,
     allFeatures: [...FEATURES],
     allStreams: [...STREAMS],
+  };
+}
+
+/** The /storage projection. World loot is sampled in the fixture rather than
+ * captured whole — the real world holds a few thousand treasure chests, and
+ * shipping their locations would add more than a megabyte to the demo bundle
+ * to make a point 120 of them already make. */
+async function storage(includesWorld: boolean): Promise<StorageResult> {
+  const fx = await world();
+  const includesPrivate = !state.hidePrivateStorage;
+  const containers = (fx.storage ?? []).filter(
+    (c) => (includesWorld || c.kind !== "world") && (includesPrivate || !c.private),
+  );
+  return {
+    containers,
+    bases: fx.guilds.flatMap((g) =>
+      g.bases.map((b, index) => ({ id: b.id, guildId: g.id, guildName: g.name, index, x: b.x, y: b.y })),
+    ),
+    guilds: fx.guilds.map((g) => ({ id: g.id, name: g.name })),
+    includesWorld,
+    includesPrivate,
+    parsedAt: fx.parsedAt,
+    saveModTime: fx.saveModTime,
   };
 }
 
@@ -476,10 +505,12 @@ async function route_(route: string, method: string, q: URLSearchParams, body: a
   // --- save-file data ---
   if (route === "/servers/1/pals" || route === "/servers/1/guilds") return world();
   if (route === "/servers/1/inventory") return inventory();
+  if (route === "/servers/1/storage") return storage(q.get("world") === "1");
   if (route === "/servers/1/visibility" && method === "GET") return visibility();
   if (route === "/servers/1/visibility" && method === "PUT") {
     const input = body as VisibilityInput;
     SERVER.hiddenFeatures = input.hiddenFeatures ?? [];
+    state.hidePrivateStorage = Boolean(input.hidePrivateStorage);
     state.playerVisibility = input.players ?? {};
     return undefined;
   }

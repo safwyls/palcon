@@ -214,6 +214,97 @@ func TestRefresh(t *testing.T) {
 // Slot data is packed into each slot's RawData, and gear/egg state lives in a
 // separate section joined by a dynamic-item guid, so a silent misread here
 // would surface as plausible-looking wrong numbers rather than an error.
+// assertWorldStorage covers the container→place join: contents come from
+// ItemContainerSaveData, but where a container stands only comes from the map
+// object that owns it, and the two are joined by container guid.
+func assertWorldStorage(t *testing.T, result *Result) {
+	t.Helper()
+
+	// Of the fixture's containers, the player bags belong to the inventory
+	// view; what's left is the placed chest, the 54-slot orphan and the guild
+	// chest. The single-slot one is ground litter and is dropped.
+	if len(result.Storage) != 3 {
+		t.Fatalf("want 3 storage containers, got %d: %+v", len(result.Storage), result.Storage)
+	}
+
+	var guild *StorageContainer
+	for i := range result.Storage {
+		if result.Storage[i].Kind == KindGuild {
+			guild = &result.Storage[i]
+		}
+	}
+	// The guild chest is joined to its contents only by the container's own
+	// BelongInfo.GroupId: its GuildChest map objects carry a GuildSecurity
+	// module and never name a container, so nothing else points at it. A
+	// regression here doesn't error — it silently files the guild's shared
+	// stock under "unplaced", which reads as a bug in the save rather than
+	// in the parse.
+	if guild == nil {
+		t.Fatalf("no guild chest in storage: %+v", result.Storage)
+	}
+	if guild.ObjectID != "GuildChest" {
+		t.Fatalf("guild chest objectId = %q, want GuildChest so it gets the game's own name and icon", guild.ObjectID)
+	}
+	if guild.GuildID != "ffffffff-0000-0000-0000-000000000001" {
+		t.Fatalf("guild chest GuildID = %q, want the fixture guild id", guild.GuildID)
+	}
+	// Shared across the guild rather than standing anywhere, so it reports no
+	// position at all — a zero coordinate would put it off the map's corner.
+	if guild.X != nil || guild.Y != nil || guild.BaseID != "" {
+		t.Fatalf("guild chest should carry no position: %+v", guild)
+	}
+	if len(guild.Slots) != 1 || guild.Slots[0].ItemID != "Tomato" || guild.Slots[0].Count != 9999 {
+		t.Fatalf("guild chest slots wrong: %+v", guild.Slots)
+	}
+
+	chest := result.Storage[0]
+	if chest.Kind != KindBase || chest.ObjectID != "ItemChest_03" || chest.Size != 30 {
+		t.Fatalf("unexpected chest: %+v", chest)
+	}
+	// Base camp, guild and position all come out of the Model blob, which the
+	// reader walks into and stops partway through.
+	if chest.BaseID != "eeeeeeee-0000-0000-0000-000000000001" {
+		t.Fatalf("chest BaseID = %q, want the fixture camp id", chest.BaseID)
+	}
+	if chest.GuildID != "ffffffff-0000-0000-0000-000000000001" {
+		t.Fatalf("chest GuildID = %q, want the fixture guild id", chest.GuildID)
+	}
+	if chest.X == nil || chest.Y == nil || *chest.X != 123400.0 || *chest.Y != -56700.0 {
+		t.Fatalf("chest position wrong: %+v", chest)
+	}
+	// Gear sitting in a chest carries the same per-instance state it would in
+	// a player's hands — the dynamic-item join isn't inventory-only.
+	if len(chest.Slots) != 2 || chest.Slots[1].ItemID != "Katana_2" || chest.Slots[1].Durability != 688 {
+		t.Fatalf("chest slots wrong: %+v", chest.Slots)
+	}
+	if len(chest.Slots[1].Passives) != 1 || chest.Slots[1].Passives[0] != "Legend" {
+		t.Fatalf("chest katana passives wrong: %+v", chest.Slots[1])
+	}
+
+	orphan := result.Storage[1]
+	if orphan.Kind != KindUnplaced || orphan.Size != 54 {
+		t.Fatalf("unexpected orphan container: %+v", orphan)
+	}
+	// Nothing claims it, so it has no place to report — and reporting a
+	// zero coordinate would put it in the sea off the map's corner.
+	if orphan.X != nil || orphan.Y != nil || orphan.BaseID != "" {
+		t.Fatalf("unplaced container should carry no position: %+v", orphan)
+	}
+	if len(orphan.Slots) != 1 || orphan.Slots[0].ItemID != "Berries" || orphan.Slots[0].Count != 5441 {
+		t.Fatalf("orphan slots wrong: %+v", orphan.Slots)
+	}
+
+	// A player's bags stay out: they're the inventory payload, and serving the
+	// same slots twice would double the largest thing the parse produces.
+	for _, c := range result.Storage {
+		for _, s := range c.Slots {
+			if s.ItemID == "PalSphere_Mega" {
+				t.Fatalf("player bag leaked into storage: %+v", c)
+			}
+		}
+	}
+}
+
 func assertInventory(t *testing.T, kyoshi, ren PlayerPals) {
 	t.Helper()
 
@@ -413,6 +504,7 @@ func TestRead(t *testing.T) {
 					t.Fatalf("party pal BaseID = %q, want empty", kyoshi.Party[0].BaseID)
 				}
 				assertInventory(t, kyoshi, ren)
+				assertWorldStorage(t, result)
 			} else if len(kyoshi.Storage) != 0 || len(ren.Storage) != 0 {
 				t.Fatalf("unexpected storage pals: %+v %+v", kyoshi.Storage, ren.Storage)
 			}

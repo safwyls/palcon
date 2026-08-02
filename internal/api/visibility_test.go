@@ -80,6 +80,33 @@ func TestHiddenFeatureRefusesMembersButNotAdmins(t *testing.T) {
 	}
 }
 
+func TestStorageIsItsOwnSwitch(t *testing.T) {
+	app, admin := newTestAppWithAdmin(t)
+	newServerForVisibility(t, app, admin)
+	member := makeMember(t, app, admin)
+
+	app.do(t, "PUT", "/api/servers/1/visibility", map[string]any{
+		"hiddenFeatures": []string{"storage"},
+		"players":        map[string][]string{},
+	}, admin)
+
+	if rec := app.do(t, "GET", "/api/servers/1/storage", nil, member); rec.Code != http.StatusForbidden {
+		t.Fatalf("member GET storage: got %d, want 403 (body %s)", rec.Code, rec.Body)
+	}
+	// Asking for world loot must not be a way around the switch.
+	if rec := app.do(t, "GET", "/api/servers/1/storage?world=1", nil, member); rec.Code != http.StatusForbidden {
+		t.Fatalf("member GET storage?world=1: got %d, want 403 (body %s)", rec.Code, rec.Body)
+	}
+	if rec := app.do(t, "GET", "/api/servers/1/storage", nil, admin); rec.Code == http.StatusForbidden {
+		t.Fatal("admin was refused a view they turned off; admins are supposed to bypass")
+	}
+	// Storage and inventory read the same parse but answer different views, so
+	// hiding one must leave the other standing.
+	if rec := app.do(t, "GET", "/api/servers/1/inventory", nil, member); rec.Code == http.StatusForbidden {
+		t.Fatal("hiding storage also hid inventory")
+	}
+}
+
 func TestHidingEveryPalsViewClosesTheSharedEndpoint(t *testing.T) {
 	app, admin := newTestAppWithAdmin(t)
 	newServerForVisibility(t, app, admin)

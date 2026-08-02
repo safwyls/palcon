@@ -18,6 +18,17 @@ Prints JSON to stdout:
         },
         "character": {...}      # level progress, condition, stat-point spend
       }
+    ],
+    "storage": [              # every non-player container in the world
+      {
+        "id": "...",          # container guid
+        "kind": "base",       # base | world | unplaced
+        "objectId": "ItemChest_03",   # what's holding it
+        "baseId": "...", "guildId": "...",  # whose base camp, when placed at one
+        "private": true,      # someone put a password on it (never the password)
+        "x": -321927.0, "y": 196691.0,      # world position, when the save has one
+        "size": 40, "slots": [<slot>...]
+      }
     ]
   }
 
@@ -742,15 +753,18 @@ def read_item_passives(rest, off):
     return out
 
 
-def read_item_containers(reader, type_name, size, wanted):
-    """Read the item containers named in `wanted`, walking past the rest.
+def read_item_containers(reader, type_name, size):
+    """Read every item container in the world, keyed by container guid.
 
-    ItemContainerSaveData holds every container in the world — each chest,
-    each base, each pal's own bag — which on an established world is thousands
-    of containers and hundreds of thousands of slots. Fully parsing it takes
-    minutes; the couple of dozen containers belonging to players take a tenth
-    of a second. The map's entries aren't individually length-prefixed, so
-    every entry is still walked, but only wanted ones are parsed.
+    ItemContainerSaveData holds each chest, each base storage box, each
+    player's bags. Handing the whole section to the library's generic property
+    reader is what costs minutes — every slot's RawData deserializes into a
+    Python list of ints, then gets thrown away. Decoding the slots ourselves as
+    we walk keeps a ~9k-container world to about a fifth of a second, so the
+    storage search can have all of them rather than just the player-owned ones.
+
+    The map's entries aren't individually length-prefixed, so every entry is
+    walked either way; only the properties we name are parsed.
     """
     if type_name != "MapProperty":
         raise Exception(f"expected MapProperty, got {type_name}")
@@ -764,55 +778,257 @@ def read_item_containers(reader, type_name, size, wanted):
     for _ in range(count):
         key = reader.properties_until_end(f"{ICSD_PATH}.Key")
         container_id = str(unwrap(v(key, "ID", default="")) or "")
-        keep = container_id in wanted
-        entry = {"size": 0, "slots": []} if keep else None
+        entry = {"size": 0, "slots": [], "groupId": ""}
         while True:
             name = reader.fstring()
             if name == "None":
                 break
             prop_type = reader.fstring()
             prop_size = reader.u64()
-            if keep and name == "Slots":
+            if name == "BelongInfo":
+                # The guild a container belongs to, when it belongs to one
+                # rather than to a player. This is the only thing that ties the
+                # guild chest to its contents — see classify_storage.
+                prop = reader.property(prop_type, prop_size, f"{ICSD_PATH}.Value.BelongInfo")
+                belong = v(prop, "value", default=None)
+                if isinstance(belong, dict):
+                    entry["groupId"] = str(unwrap(v(belong, "GroupId", default="")) or "")
+            elif name == "Slots":
                 prop = reader.property(prop_type, prop_size, f"{ICSD_PATH}.Value.Slots")
                 for slot in v(prop, "value", "values", default=None) or []:
                     raw = v(slot, "RawData", "values", default=None)
                     decoded = decode_item_slot(bytes(raw)) if raw else None
                     if decoded:
                         entry["slots"].append(decoded)
-            elif keep and name == "SlotNum":
+            elif name == "SlotNum":
                 # The container's real capacity, so the UI can draw the empty
                 # slots too rather than implying a full bag.
                 entry["size"] = num(reader.property(prop_type, prop_size, f"{ICSD_PATH}.Value.SlotNum"))
             else:
                 skip_property(reader, prop_type, prop_size)
-        if entry is not None:
-            found[container_id] = entry
+        found[container_id] = entry
     return found
 
 
-def build_inventories(containers, dynamic_entries, index):
-    """Assemble {player uid: {role: container}} from the parsed containers,
-    folding each dynamic item's state into the slot that references it."""
+# ---------------------------------------------------------------------------
+# World storage.
+#
+# A container's contents say nothing about where it is. MapObjectSaveData is
+# the join: one entry per placed object, each carrying the container guids its
+# modules own, plus the base camp, guild and world position of the object
+# holding them.
+# ---------------------------------------------------------------------------
+
+MOSD_PATH = ".worldSaveData.MapObjectSaveData"
+
+ITEM_CONTAINER_MODULE = "EPalMapObjectConcreteModelModuleType::ItemContainer"
+
+# A lockable chest carries this module whether or not anyone has locked it: the
+# module's presence is the building having a keypad, not the keypad being set.
+# What makes a chest private is a password actually on it — in a sample world,
+# 65 chests carried the module and 15 had a password.
+PASSWORD_LOCK_MODULE = "EPalMapObjectConcreteModelModuleType::PasswordLock"
+
+# Below this capacity, a container the world places but no longer references is
+# ground litter — a single dropped item, a pal's death drop, a harvested crop
+# waiting to be swept up. They outnumber real storage roughly 25:1 and carry no
+# position, so they'd be unsearchable noise. See classify_storage.
+MIN_UNPLACED_SLOTS = 3
+
+
+def read_map_object_containers(reader, type_name, size):
+    """Locate every item container the world places.
+
+    MapObjectSaveData is one entry per placed object — every wall, foundation
+    and torch on the server. Only the ones carrying an ItemContainer module
+    matter here, but array entries aren't individually length-prefixed, so each
+    is still walked; what's saved is decoding the rest of their payload.
+
+    Returns {container guid: {objectId, baseId, guildId, x, y, private}}.
+    """
+    if type_name != "ArrayProperty":
+        raise Exception(f"expected ArrayProperty, got {type_name}")
+    reader.fstring()  # element type
+    reader.optional_guid()
+    count = reader.u32()
+    prop_name = reader.fstring()
+    reader.fstring()  # element property type
+    reader.u64()
+    reader.fstring()  # struct type
+    reader.guid()
+    reader.skip(1)
+
+    out = {}
+    path = f"{MOSD_PATH}.{prop_name}"
+    with FArchiveReader(b"", PALWORLD_TYPE_HINTS, {}, allow_nan=True) as helper:
+        for _ in range(count):
+            props = reader.properties_until_end(path)
+            modules = v(props, "ConcreteModel", "ModuleMap", default=None) or []
+            held, private = [], False
+            for module in modules:
+                key = module.get("key")
+                if key not in (ITEM_CONTAINER_MODULE, PASSWORD_LOCK_MODULE):
+                    continue
+                raw = v(module.get("value", {}), "RawData", "values", default=None)
+                if not raw:
+                    continue
+                try:
+                    r = helper.internal_copy(bytes(raw), debug=False)
+                    if key == ITEM_CONTAINER_MODULE:
+                        # The module leads with the container it targets; the
+                        # slot attributes after it aren't ours to read.
+                        held.append(str(r.guid()))
+                    else:
+                        # Lock state first, then the password. Whether one is
+                        # set is the only part that leaves this function — the
+                        # password itself is never read into the payload, and
+                        # the per-player unlock records after it stay unread.
+                        r.byte()
+                        private = private or bool(r.fstring())
+                except Exception:
+                    continue
+            if not held:
+                continue
+            place = {"objectId": text(props, "MapObjectId"), "baseId": "", "guildId": "",
+                     "x": None, "y": None, "private": private}
+            raw = v(props, "Model", "RawData", "values", default=None)
+            if raw:
+                try:
+                    r = helper.internal_copy(bytes(raw), debug=False)
+                    r.guid()  # instance id
+                    r.guid()  # concrete model instance id
+                    place["baseId"] = str(r.guid())
+                    place["guildId"] = str(r.guid())
+                    r.i32()   # hp current
+                    r.i32()   # hp max
+                    t = r.ftransform().get("translation", {})
+                    place["x"], place["y"] = t.get("x"), t.get("y")
+                    # The blob carries repair/owner/builder guids past this
+                    # point; the storage view groups by base camp, not by who
+                    # placed the shelf, so they stay unread.
+                except Exception as exc:
+                    # A chest we can't place is still a chest worth searching;
+                    # it just lands in the unplaced group.
+                    print(f"warning: no position for a {place['objectId']}: {exc}", file=sys.stderr)
+            for cid in held:
+                out[cid] = place
+    return out
+
+
+def decode_dynamic_items(dynamic_entries):
+    """{local id: per-instance item state} for the gear and eggs that carry any."""
     dynamic = {}
     for entry in dynamic_entries or []:
         raw = v(entry, "RawData", "values", default=None)
         decoded = decode_dynamic_item(bytes(raw)) if raw else None
         if decoded:
             dynamic[decoded.pop("dynamicId")] = decoded
+    return dynamic
 
+
+def resolve_slots(container, dynamic):
+    """A container's occupied slots in grid order, each folded together with
+    whatever per-instance state the save holds for it."""
+    slots = []
+    for slot in sorted(container["slots"], key=lambda s: s["slot"]):
+        slot = dict(slot)
+        state = dynamic.get(slot.pop("dynamicId", ""))
+        if state:
+            # itemId is already on the slot and agrees; the rest is the
+            # per-instance state the slot itself doesn't carry.
+            slot.update({k: x for k, x in state.items() if k != "itemId"})
+        slots.append(slot)
+    return slots
+
+
+def classify_storage(containers, places, item_containers, dynamic):
+    """Every container worth searching, as a flat list.
+
+    Four kinds come out of the classification:
+
+      base    a structure standing at a guild's base camp — the chests, feed
+              boxes, refrigerators and machines people actually stock
+      world   a container the world placed with no base camp behind it: the
+              treasure boxes scattered across the map
+      guild   the guild chest: storage the whole guild shares. Its GuildChest
+              map objects carry only a GuildSecurity module and never name a
+              container, so the only thing joining the chest to its contents is
+              the container's own BelongInfo.GroupId. Guild-owned containers a
+              map object *does* claim are that object's (an expedition
+              station's reward slots belong to the guild too), so it's the
+              combination — owned by a guild, claimed by nothing — that means
+              guild chest.
+      unplaced  real storage no surviving map object references and no guild
+              behind it, so the save gives it no position at all.
+
+    Player bags are left out — they're the inventory view's payload, and
+    serving the same slots twice would double the largest thing this parse
+    produces. Ground litter (see MIN_UNPLACED_SLOTS) is dropped outright.
+    """
+    out = []
+    for cid, container in containers.items():
+        if cid in item_containers:
+            continue
+        place = places.get(cid)
+        group = container.get("groupId") or ""
+        if place is None and group and group != ZERO_GUID:
+            # The guild chest has no position to report; it's reached from any
+            # of the guild's chests rather than standing in one spot.
+            place = {"objectId": "GuildChest", "guildId": group}
+            kind = "guild"
+        elif place is None:
+            # Empty and unreferenced is nothing at all; small and unreferenced
+            # is a dropped item lying in the grass.
+            if container["size"] < MIN_UNPLACED_SLOTS or not container["slots"]:
+                continue
+            place, kind = {}, "unplaced"
+        elif place["baseId"] and place["baseId"] != ZERO_GUID:
+            kind = "base"
+        else:
+            kind = "world"
+        # An empty world chest is one somebody already looted; an empty chest
+        # at a base — or an empty guild chest — is a real, stockable shelf and
+        # worth listing.
+        if kind not in ("base", "guild") and not container["slots"]:
+            continue
+        entry = {
+            "id": cid,
+            "kind": kind,
+            "objectId": place.get("objectId", ""),
+            "size": container["size"],
+            "slots": resolve_slots(container, dynamic),
+        }
+        for key in ("baseId", "guildId"):
+            value = place.get(key, "")
+            if value and value != ZERO_GUID:
+                entry[key] = value
+        if place.get("private"):
+            entry["private"] = True
+        if place.get("x") is not None:
+            entry["x"], entry["y"] = place["x"], place["y"]
+        out.append(entry)
+    # Fullest first: the question this list answers is "where is the stuff",
+    # and a 40-slot chest outranks a one-slot ore pit for every reading of it.
+    out.sort(key=lambda e: (-len(e["slots"]), e["objectId"], e["id"]))
+    return out
+
+
+def build_inventories(containers, dynamic, index):
+    """Assemble {player uid: {role: container}} for the player-owned containers.
+
+    Driven by the index rather than the container map: the parse now reads
+    every container in the world, and all but a couple of dozen of them belong
+    to a chest somewhere, not to a player.
+    """
     out = {}
-    for container_id, container in containers.items():
-        uid, role = index[container_id]
-        slots = []
-        for slot in sorted(container["slots"], key=lambda s: s["slot"]):
-            state = dynamic.get(slot.pop("dynamicId"))
-            if state:
-                # itemId is already on the slot and agrees; the rest is the
-                # per-instance state the slot itself doesn't carry.
-                slots.append({**slot, **{k: x for k, x in state.items() if k != "itemId"}})
-            else:
-                slots.append(slot)
-        out.setdefault(uid, {})[role] = {"size": container["size"], "slots": slots}
+    for container_id, (uid, role) in index.items():
+        container = containers.get(container_id)
+        if container is None:
+            continue
+        out.setdefault(uid, {})[role] = {
+            "size": container["size"],
+            "slots": resolve_slots(container, dynamic),
+        }
     return out
 
 
@@ -834,7 +1050,7 @@ def main():
     with open(level_path, "rb") as f:
         gvas_data = decompress_sav(f.read())
     guilds = []
-    guild_entries, camps, inventories = None, {}, {}
+    guild_entries, camps, inventories, storage = None, {}, {}, []
     try:
         with contextlib.redirect_stdout(sys.stderr):
             sections = read_sections(
@@ -844,19 +1060,22 @@ def main():
                     "BaseCampSaveData",
                     "GroupSaveDataMap",
                     "ItemContainerSaveData",
+                    "MapObjectSaveData",
                     "DynamicItemSaveData",
                 },
                 handlers={
-                    "ItemContainerSaveData": lambda r, t, s: read_item_containers(
-                        r, t, s, set(item_containers)
-                    )
+                    "ItemContainerSaveData": read_item_containers,
+                    "MapObjectSaveData": read_map_object_containers,
                 },
             )
         char_map = sections.get("CharacterSaveParameterMap", [])
-        inventories = build_inventories(
-            sections.get("ItemContainerSaveData") or {},
-            v(sections.get("DynamicItemSaveData"), "values", default=None),
-            item_containers,
+        # Deliberately not `containers` — that name already holds the pal
+        # container index this function bucketes party/palbox ownership by.
+        item_data = sections.get("ItemContainerSaveData") or {}
+        dynamic = decode_dynamic_items(v(sections.get("DynamicItemSaveData"), "values", default=None))
+        inventories = build_inventories(item_data, dynamic, item_containers)
+        storage = classify_storage(
+            item_data, sections.get("MapObjectSaveData") or {}, item_containers, dynamic
         )
         with contextlib.redirect_stdout(sys.stderr), FArchiveReader(
             b"", PALWORLD_TYPE_HINTS, {}, allow_nan=True
@@ -1002,6 +1221,7 @@ def main():
     out = {
         "players": sorted(players.values(), key=lambda r: (r["nickname"].lower(), r["uid"])),
         "guilds": guilds,
+        "storage": storage,
     }
     json.dump(out, sys.stdout, separators=(",", ":"))
     return 0

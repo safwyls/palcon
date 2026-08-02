@@ -143,15 +143,17 @@ so it's switchable — per server and per player, under <b>Settings → Who can 
 
 <figure class="doc-shot">
   <img src="../assets/visibility.webp" loading="lazy" width="1600" height="1000"
-    alt="Settings panel: six view toggles above a per-player table of pals, inventory and map switches">
-  <figcaption>Six views to switch off for the whole server, and a per-player row beneath
-    for anyone who'd rather keep their pals, bags or position to themselves.</figcaption>
+    alt="Settings panel: seven view toggles and a locked-chest switch, above a per-player table of pals, inventory and map switches">
+  <figcaption>Seven views to switch off for the whole server, the locked-chest switch beneath
+    them, and a per-player row for anyone who'd rather keep their pals, bags or position to
+    themselves.</figcaption>
 </figure>
 
 <h3 id="two-switches">Two switches</h3>
 <ul>
   <li><b>A view</b> can be turned off for the whole server — Live map, Player pals, Inventory,
-    Paldex, Guilds or Calculators. Its nav link goes, and the endpoints behind it refuse.</li>
+    Storage, Paldex, Guilds or Calculators. Its nav link goes, and the endpoints behind it
+    refuse.</li>
   <li><b>A player</b> can be withheld from one kind of data — their pals, their inventory or
     their map position — while the view stays on for everyone else.</li>
 </ul>
@@ -159,9 +161,19 @@ so it's switchable — per server and per player, under <b>Settings → Who can 
 <p>Both are enforced by the API, not just hidden in the menu, so switching a view off actually
 stops the data being served rather than only removing the link to it.</p>
 
+<h3 id="locked-chests">Password-locked chests</h3>
+<p>A player can put a password on a chest in-game. <b>Search password-locked chests</b>, beside the
+view switches, decides whether the <a href="save-files.html#storage">Storage</a> view indexes those
+at all — off, their contents never reach anyone's browser.</p>
+<p>It's the one switch here that admins do <i>not</i> see through, and deliberately so: a switch
+that says "don't search these" and then shows them to the person who set it reads as broken. The
+escape hatch is the same as everywhere else — only an admin can turn it back on. Readers also get
+their own "exclude locked chests" checkbox in the view, but that only filters what the server
+already sent; this switch decides what gets sent.</p>
+
 <h3 id="admin-bypass">Admins keep their own view</h3>
-<p>A hidden view still appears in an admin's nav, marked with a struck-through eye, and still
-serves them data; a hidden player is still listed for them. That's deliberate: the point is
+<p>With the one exception above, a hidden view still appears in an admin's nav, marked with a
+struck-through eye, and still serves them data; a hidden player is still listed for them. That's deliberate: the point is
 letting an owner honour a privacy request without also blinding themselves for moderation, and
 an admin is the only person who can switch a view back on — one that hid itself from them would
 be a trap. If you want the strict version, turn the view off and leave it off; nobody else can

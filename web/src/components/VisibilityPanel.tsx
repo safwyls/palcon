@@ -64,6 +64,11 @@ function Toggle({
  * view stays on for everyone else. Admins see through both — the point is
  * letting an owner honour a privacy request without blinding themselves, and
  * an admin is the only one who can turn a view back on.
+ *
+ * The locked-chest switch below them is the exception: it takes password-locked
+ * chests out of the Storage index for everyone, admins included, because a
+ * switch that says "don't search these" and then shows them to whoever set it
+ * reads as broken. The escape hatch is the same — only an admin can undo it.
  */
 export function VisibilityPanel({ serverId }: { serverId: number }) {
   const queryClient = useQueryClient();
@@ -75,18 +80,20 @@ export function VisibilityPanel({ serverId }: { serverId: number }) {
   // Edited locally and saved as a whole, like the settings editor beside it:
   // flipping six switches shouldn't be six round trips.
   const [hiddenFeatures, setHiddenFeatures] = useState<string[]>([]);
+  const [hidePrivateStorage, setHidePrivateStorage] = useState(false);
   const [players, setPlayers] = useState<Record<string, string[]>>({});
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     if (!query.data) return;
     setHiddenFeatures(query.data.hiddenFeatures ?? []);
+    setHidePrivateStorage(query.data.hidePrivateStorage ?? false);
     setPlayers(query.data.players ?? {});
     setDirty(false);
   }, [query.data]);
 
   const save = useMutation({
-    mutationFn: () => api.updateServerVisibility(serverId, { hiddenFeatures, players }),
+    mutationFn: () => api.updateServerVisibility(serverId, { hiddenFeatures, hidePrivateStorage, players }),
     onSuccess: () => {
       setDirty(false);
       toast.success("Visibility saved");
@@ -141,7 +148,8 @@ export function VisibilityPanel({ serverId }: { serverId: number }) {
           <h2 className="font-display text-base font-bold">Who can see what</h2>
           <p className="text-xs text-ink/50">
             Turn a view off for everyone, or hide one player's data while the view stays on. Admins
-            always see everything.
+            see through both — the locked-chest switch at the bottom is the one exception, and it
+            applies to you too.
           </p>
         </div>
         {dirty && (
@@ -168,6 +176,28 @@ export function VisibilityPanel({ serverId }: { serverId: number }) {
             </div>
           );
         })}
+
+        {/* Sits with the view switches because it's the same kind of decision,
+            but it isn't one: it takes a category of container out of the
+            Storage index for everyone, admins included. An admin who wants to
+            look turns it back on — they're the only ones who can. */}
+        <div className="flex items-center justify-between gap-4 px-5 py-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">Search password-locked chests</p>
+            <p className="text-xs text-ink/40">
+              A password on a chest is a player saying its contents are theirs. Off keeps those
+              chests out of Storage results entirely — for you as well.
+            </p>
+          </div>
+          <Toggle
+            on={!hidePrivateStorage}
+            onChange={(next) => {
+              setHidePrivateStorage(!next);
+              setDirty(true);
+            }}
+            label="Search password-locked chests"
+          />
+        </div>
       </div>
 
       <div className="border-t border-ink/10 px-5 py-4">

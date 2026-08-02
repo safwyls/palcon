@@ -172,9 +172,55 @@ type Guild struct {
 	Bases         []GuildBase   `json:"bases"`
 }
 
+// Container kinds, as classify_storage in the extractor labels them.
+const (
+	// KindBase is a structure standing at a guild's base camp — the chests,
+	// feed boxes, refrigerators and machines people actually stock.
+	KindBase = "base"
+	// KindWorld is a container the world placed with no base camp behind it:
+	// the treasure boxes scattered across the map.
+	KindWorld = "world"
+	// KindGuild is the guild chest — storage a whole guild shares, reached
+	// from any of its chests and so recorded with no position of its own.
+	KindGuild = "guild"
+	// KindUnplaced is real storage no surviving map object references, so the
+	// save gives it no position. Rare, but it can hold a lot.
+	KindUnplaced = "unplaced"
+)
+
+// StorageContainer is one searchable container in the world: what's in it, and
+// where it stands. Player bags aren't here — they're the inventory view's
+// payload, served by /inventory from the same parse.
+type StorageContainer struct {
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	// ObjectID is the placed object holding it ("ItemChest_03"), which the
+	// frontend turns into the name the game gives it. Empty when unplaced.
+	ObjectID string     `json:"objectId"`
+	Size     int        `json:"size"`
+	Slots    []ItemSlot `json:"slots"`
+
+	// The base camp and guild that own it. Both absent for world loot and
+	// unplaced storage.
+	BaseID  string `json:"baseId,omitempty"`
+	GuildID string `json:"guildId,omitempty"`
+
+	// Private reports that someone has put a password on this chest. The
+	// password itself is never read out of the save — see the extractor's
+	// read_map_object_containers.
+	Private bool `json:"private,omitempty"`
+
+	// World coordinates, in the same space the live map plots players in.
+	// Nil together, for a container the save never placed.
+	X *float64 `json:"x,omitempty"`
+	Y *float64 `json:"y,omitempty"`
+}
+
 type Result struct {
 	Players []PlayerPals `json:"players"`
 	Guilds  []Guild      `json:"guilds"`
+	// Storage is every non-player container in the world, fullest first.
+	Storage []StorageContainer `json:"storage"`
 	// ParsedAt is when the extraction ran; SaveModTime is the Level.sav
 	// mtime it was parsed from — shown in the UI so "how fresh is this"
 	// is never a mystery (saves only change on the game's autosave cycle).
