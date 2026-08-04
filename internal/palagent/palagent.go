@@ -28,7 +28,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/safwyls/palcon/internal/dockerctl"
-	"github.com/safwyls/palcon/internal/games/palworld"
 	"github.com/safwyls/palcon/internal/steamcmd"
 )
 
@@ -37,6 +36,18 @@ import (
 // 1 = steam verbs; 2 adds the file verbs (save bundle, config); 3 adds
 // supervisor mode's power verbs and game status.
 const APIVersion = 3
+
+// DefaultAppID is the Steam app the agent updates when none is configured:
+// the Palworld dedicated server, which is what every existing deployment
+// expects. Set PALAGENT_APPID to point the agent at a different one.
+//
+// Spelled out here rather than read from internal/games/palworld, on purpose.
+// The agent is a thin sidecar — file access, process control, SteamCMD — and
+// importing a game package for one integer would link the game registry and
+// the RCON client it never speaks into every agent binary, and run a
+// registration nothing here queries. A Steam app id is a fixed number, so the
+// duplication cannot drift.
+const DefaultAppID = 2394010
 
 // minTokenLen is the floor for the shared token; the agent refuses to
 // start below it rather than run guessably authenticated.
@@ -50,8 +61,7 @@ type Config struct {
 	InstallDir string
 	// SteamCmd is the steamcmd binary to exec for update jobs.
 	SteamCmd string
-	// AppID is the Steam app to update; defaults to the Palworld
-	// dedicated server.
+	// AppID is the Steam app to update; defaults to DefaultAppID.
 	AppID int
 	// Mode is "companion" (default: the game runs in its own container)
 	// or "supervisor" (this agent runs the game as a child process and
@@ -125,7 +135,7 @@ func New(cfg Config) (*Agent, error) {
 		cfg.SteamCmd = "steamcmd"
 	}
 	if cfg.AppID == 0 {
-		cfg.AppID = palworld.AppID
+		cfg.AppID = DefaultAppID
 	}
 	if cfg.Mode == "" {
 		cfg.Mode = "companion"

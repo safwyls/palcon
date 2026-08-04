@@ -64,7 +64,14 @@ export function PassiveBadge({ code }: { code: string }) {
   return (
     <span
       title={look.label ? `${code} · ${look.label}` : code}
-      className={cn("inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none", look.pill)}
+      // `relative` contains the sr-only label: it's position:absolute, and
+      // without a positioned parent it anchors to the initial containing block
+      // instead, escaping any overflow-hidden/auto scroller it sits in. Chips
+      // render in the hundreds, so those stray offsets add up to real scroll.
+      className={cn(
+        "relative inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
+        look.pill,
+      )}
     >
       <TierChevrons tier={tier} size={9} className={look.chevron} />
       {passiveName(code)}
@@ -83,7 +90,7 @@ export function PassiveTierTile({ code, tier = passiveTier(code ?? "") }: { code
   return (
     <span
       title={look.label}
-      className={cn("inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded", look.pill)}
+      className={cn("relative inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded", look.pill)}
     >
       <TierChevrons tier={tier} size={12} className={look.chevron} />
       <span className="sr-only">{look.label}</span>

@@ -38,7 +38,14 @@ export function AppShell() {
         <div className="lg:hidden">
           <MobileTopBar server={activeServer} />
         </div>
-        <main className="min-h-0 flex-1 overflow-y-auto">
+        {/* `relative` is load-bearing: Tailwind's .sr-only is position:absolute,
+            and with no positioned ancestor those spans resolve against the
+            initial containing block, which overflow-hidden on a static parent
+            does not clip. On a long page (the Paldex board, the breeding path's
+            route rows) their stacked offsets grew the document itself, so the
+            whole app scrolled instead of just this pane. Making main the
+            containing block keeps them inside its own scroll area. */}
+        <main className="relative min-h-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>
         <div className="lg:hidden">
