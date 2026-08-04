@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/safwyls/palcon/internal/palsave"
+	"github.com/safwyls/palcon/internal/games/palworld/palsave"
 )
 
 // TestStorageForWithholdsWorldLoot pins the world-loot toggle as a server-side

@@ -2,24 +2,12 @@ import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { EyeOff, Pencil, Trash2 } from "lucide-react";
-import { api, type Feature, type Server } from "../lib/api";
+import { api, type Server } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { formatUptime } from "../lib/palette";
-import { FEATURE_LABELS, canSeeFeature, featureOff } from "../lib/visibility";
+import { FEATURE_ROUTES, featureLabel } from "../lib/games";
+import { canSeeFeature, featureOff, serverFeatures } from "../lib/visibility";
 import { cn } from "../lib/utils";
-
-/** The switchable views, in nav order. The route segment differs from the
- * feature key for pals — the page has always lived at /players. */
-const SAVE_VIEWS: { feature: Feature; path: string }[] = [
-  { feature: "map", path: "map" },
-  { feature: "pals", path: "players" },
-  { feature: "inventory", path: "inventory" },
-  { feature: "storage", path: "storage" },
-  { feature: "paldex", path: "paldex" },
-  { feature: "achievements", path: "achievements" },
-  { feature: "guilds", path: "guilds" },
-  { feature: "calculators", path: "calculators" },
-];
 import { Badge } from "./ui/badge";
 import { ServerFormDialog } from "./ServerFormDialog";
 import { DeleteServerDialog } from "./DeleteServerDialog";
@@ -110,10 +98,16 @@ export function ServerSubNav({ server }: { server: Server }) {
         <NavLink to={`/servers/${server.id}`} end className={navLinkClass}>
           Dashboard
         </NavLink>
-        {SAVE_VIEWS.map(({ feature, path }) =>
+        {/* The views come from the server's own game, so a game without a
+            given view simply has no link rather than a dead one. */}
+        {serverFeatures(server).map((feature) =>
           canSeeFeature(server, feature, isAdmin) ? (
-            <NavLink key={feature} to={`/servers/${server.id}/${path}`} className={navLinkClass}>
-              {FEATURE_LABELS[feature]}
+            <NavLink
+              key={feature}
+              to={`/servers/${server.id}/${FEATURE_ROUTES[feature]}`}
+              className={navLinkClass}
+            >
+              {featureLabel(server, feature)}
               {/* Admins keep the link and get told it's off for everyone
                   else — otherwise the only sign would be its absence from a
                   menu they can still use. */}

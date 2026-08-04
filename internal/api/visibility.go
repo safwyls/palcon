@@ -113,7 +113,7 @@ func (s *Server) handleServerVisibility(w http.ResponseWriter, r *http.Request) 
 		Players:            players,
 		Roster:             roster,
 		RosterUnavailable:  rosterErr != nil,
-		AllFeatures:        store.AllFeatures,
+		AllFeatures:        srv.Features(),
 		AllStreams:         store.AllStreams,
 	})
 }

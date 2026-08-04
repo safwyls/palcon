@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/safwyls/palcon/internal/palworld"
+	"github.com/safwyls/palcon/internal/game"
 	"github.com/safwyls/palcon/internal/store"
 )
 
@@ -40,7 +40,7 @@ type watched struct {
 // watch probes the server's player list each tick and turns changes into
 // player_events rows (always) and Discord notifications (gated inside the
 // notifier by each server's webhook config).
-func (c *Collector) watch(ctx context.Context, srv *store.Server, client palworld.Client) {
+func (c *Collector) watch(ctx context.Context, srv *store.Server, client game.Client) {
 	players, err := client.Players(ctx)
 	now := time.Now()
 
@@ -84,7 +84,7 @@ func (c *Collector) watch(ctx context.Context, srv *store.Server, client palworl
 		// transports); names are display-only. The uid is canonicalised on
 		// the way in so what lands in the events table can be compared with
 		// a save's PlayerUId without every reader redoing the spelling.
-		current[p.UserID] = watched{uid: palworld.CanonicalUID(p.PlayerUID), name: p.Name}
+		current[p.UserID] = watched{uid: srv.CanonicalUID(p.PlayerUID), name: p.Name}
 	}
 	prev := st.players
 	primed := st.primed

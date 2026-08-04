@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/safwyls/palcon/internal/steamops"
+	"github.com/safwyls/palcon/internal/steamcmd"
 )
 
 // handleClearSteamCache empties the SteamCMD cache directories — the
@@ -38,7 +38,7 @@ func (s *Server) handleClearSteamCache(w http.ResponseWriter, r *http.Request) {
 		removed, err = s.agentFor(srv).ClearSteamCache(r.Context())
 	case srv.InstallPath != "":
 		via = "local"
-		removed, err = steamops.ClearCache(srv.InstallPath)
+		removed, err = steamcmd.ClearCache(srv.InstallPath)
 	default:
 		writeError(w, http.StatusBadRequest, "no agent or install path configured for this server")
 		return
@@ -49,7 +49,7 @@ func (s *Server) handleClearSteamCache(w http.ResponseWriter, r *http.Request) {
 		// A missing cache layout is a configuration problem, not a server
 		// fault — tell the user rather than reporting a no-op success that
 		// leaves their real cache corrupted.
-		if errors.Is(err, steamops.ErrNotInstallRoot) {
+		if errors.Is(err, steamcmd.ErrNotInstallRoot) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}

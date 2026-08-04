@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/safwyls/palcon/internal/palworld"
+	"github.com/safwyls/palcon/internal/game"
 	"github.com/safwyls/palcon/internal/store"
 )
 
 var errBadServerID = errors.New("invalid server id")
 
-func (s *Server) clientForServerID(r *http.Request) (palworld.Client, *store.Server, error) {
+func (s *Server) clientForServerID(r *http.Request) (game.Client, *store.Server, error) {
 	id, err := serverIDFromRequest(r)
 	if err != nil {
 		return nil, nil, errBadServerID
@@ -21,26 +21,26 @@ func (s *Server) clientForServerID(r *http.Request) (palworld.Client, *store.Ser
 	if err != nil {
 		return nil, nil, err
 	}
-	client := palworld.New(palworld.Config{
-		Host:         srv.Host,
-		RESTPort:     srv.RESTPort,
-		RESTPassword: srv.RESTPassword,
-		RCONPort:     srv.RCONPort,
-		RCONPassword: srv.RCONPassword,
-		PreferREST:   srv.UseREST,
-	})
+	client, err := srv.Client()
+	if err != nil {
+		return nil, nil, err
+	}
 	return client, srv, nil
 }
 
 // writeServerLoadError maps a clientForServerID failure onto the right
-// status: bad path segment → 400, missing row → 404, and anything else is
-// a real store/DB failure → 500 (not a client error).
+// status: bad path segment → 400, missing row → 404, a row naming a game
+// this build doesn't have → 501, and anything else is a real store/DB
+// failure → 500 (not a client error).
 func writeServerLoadError(w http.ResponseWriter, err error) {
+	var unknownGame *game.UnknownGameError
 	switch {
 	case errors.Is(err, errBadServerID):
 		writeError(w, http.StatusBadRequest, "invalid server id")
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, "server not found")
+	case errors.As(err, &unknownGame):
+		writeError(w, http.StatusNotImplemented, unknownGame.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, "failed to load server")
 	}
@@ -48,7 +48,7 @@ func writeServerLoadError(w http.ResponseWriter, err error) {
 
 // withClient runs fn against the server's client, reporting success so
 // callers can audit actions that actually happened.
-func (s *Server) withClient(w http.ResponseWriter, r *http.Request, fn func(palworld.Client) error) bool {
+func (s *Server) withClient(w http.ResponseWriter, r *http.Request, fn func(game.Client) error) bool {
 	client, _, err := s.clientForServerID(r)
 	if err != nil {
 		writeServerLoadError(w, err)
@@ -103,19 +103,13 @@ func (s *Server) handleServerPlayers(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if hidden, err := s.hiddenPlayers(r, srv.ID); err == nil && len(hidden) > 0 {
 		for i := range players {
-			if hidden.HiddenFor(normalizeUID(players[i].PlayerUID), store.StreamMap) {
+			if hidden.HiddenFor(srv.CanonicalUID(players[i].PlayerUID), store.StreamMap) {
 				players[i].LocationX, players[i].LocationY = 0, 0
 			}
 		}
 	}
 	writeJSON(w, http.StatusOK, players)
 }
-
-// normalizeUID renders a live player id in the dashed form the save files use.
-// RCON and REST report it undashed (and in different bases), so a raw
-// comparison against a save uid would silently never match — which for a
-// visibility check means failing open.
-func normalizeUID(uid string) string { return palworld.CanonicalUID(uid) }
 
 func (s *Server) handleServerBroadcast(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -125,7 +119,7 @@ func (s *Server) handleServerBroadcast(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if s.withClient(w, r, func(c palworld.Client) error {
+	if s.withClient(w, r, func(c game.Client) error {
 		return c.Broadcast(r.Context(), req.Message)
 	}) {
 		s.audit(r, serverIDOf(r), "broadcast", req.Message)
@@ -141,7 +135,7 @@ func (s *Server) handleServerKick(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if s.withClient(w, r, func(c palworld.Client) error {
+	if s.withClient(w, r, func(c game.Client) error {
 		return c.Kick(r.Context(), req.PlayerUID, req.Message)
 	}) {
 		s.audit(r, serverIDOf(r), "kick", req.PlayerUID)
@@ -157,7 +151,7 @@ func (s *Server) handleServerBan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if s.withClient(w, r, func(c palworld.Client) error {
+	if s.withClient(w, r, func(c game.Client) error {
 		return c.Ban(r.Context(), req.PlayerUID, req.Message)
 	}) {
 		s.audit(r, serverIDOf(r), "ban", req.PlayerUID)
@@ -172,7 +166,7 @@ func (s *Server) handleServerUnban(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if s.withClient(w, r, func(c palworld.Client) error {
+	if s.withClient(w, r, func(c game.Client) error {
 		return c.Unban(r.Context(), req.PlayerUID)
 	}) {
 		s.audit(r, serverIDOf(r), "unban", req.PlayerUID)
@@ -180,7 +174,7 @@ func (s *Server) handleServerUnban(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleServerSave(w http.ResponseWriter, r *http.Request) {
-	if s.withClient(w, r, func(c palworld.Client) error {
+	if s.withClient(w, r, func(c game.Client) error {
 		return c.Save(r.Context())
 	}) {
 		s.audit(r, serverIDOf(r), "save-world", "")
@@ -196,7 +190,7 @@ func (s *Server) handleServerShutdown(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if s.withClient(w, r, func(c palworld.Client) error {
+	if s.withClient(w, r, func(c game.Client) error {
 		return c.Shutdown(r.Context(), req.WaitSeconds, req.Message)
 	}) {
 		s.audit(r, serverIDOf(r), "shutdown", fmt.Sprintf("in %ds: %s", req.WaitSeconds, req.Message))
@@ -209,7 +203,7 @@ func (s *Server) handleServerSettings(w http.ResponseWriter, r *http.Request) {
 		writeServerLoadError(w, err)
 		return
 	}
-	ext, ok := client.(palworld.ExtendedClient)
+	ext, ok := client.(game.ExtendedClient)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "this server is configured RCON-only; settings require the REST API")
 		return
@@ -228,7 +222,7 @@ func (s *Server) handleServerMetrics(w http.ResponseWriter, r *http.Request) {
 		writeServerLoadError(w, err)
 		return
 	}
-	ext, ok := client.(palworld.ExtendedClient)
+	ext, ok := client.(game.ExtendedClient)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "this server is configured RCON-only; metrics require the REST API")
 		return

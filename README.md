@@ -124,6 +124,9 @@ written against this codebase.
 ```
 cmd/palcon/           dashboard entrypoint
 cmd/palagent/         sidecar agent entrypoint (companion/supervisor/provisioner)
+
+  game-agnostic core — none of this knows what Palworld is
+internal/game/        the contracts: Client, Metrics, Definition + registry
 internal/api/         HTTP handlers, auth, permissions, routing
 internal/agentctl/    palcon's client for palagent sidecars
 internal/agentfiles/  agent-synced save/config cache
@@ -134,17 +137,26 @@ internal/crypto/      AES-GCM encryption for stored passwords
 internal/db/          sqlite connection + migrations
 internal/dockerctl/   docker API client (scoped proxy; create for the provisioner)
 internal/notify/      Discord webhooks
-internal/palagent/    the sidecar agent itself (all three modes)
-internal/palconfig/   PalWorldSettings.ini parsing + editing
-internal/palsave/     save file reading (Python extractor + Go runner)
-internal/palworld/    REST + RCON clients, fallback wrapper
+internal/rcon/        Source RCON wire protocol (+ rcontest, a fake server)
+internal/savecache/   mtime-keyed world-save parse cache
 internal/sched/       scheduled restarts
-internal/steamops/    SteamCMD cache clear + update args
+internal/steamcmd/    SteamCMD cache clear + update args
 internal/store/       data access: servers, users, metrics
 internal/watchdog/    crash watchdog for docker-managed servers
+
+  per-game implementations
+internal/games/                        the registry's import list
+internal/games/palworld/               REST + RCON clients, fallback, uids
+internal/games/palworld/palsave/       save reading (Python extractor + Go runner)
+internal/games/palworld/palconfig/     PalWorldSettings.ini parsing + editing
+internal/palagent/    the sidecar agent itself (all three modes)
+
 web/                  React frontend, embedded into the Go binary
 site/                 homepage + docs, published to GitHub Pages
 ```
+
+Adding a second game means implementing `game.Client` and registering a
+`game.Definition` — see [docs/porting-to-another-game.md](docs/porting-to-another-game.md).
 
 </details>
 

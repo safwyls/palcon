@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/safwyls/palcon/internal/game"
 )
 
 // RESTClient talks to a Palworld server's built-in REST API
@@ -86,8 +88,8 @@ func (c *RESTClient) do(ctx context.Context, method, path string, body any, out 
 	return nil
 }
 
-func (c *RESTClient) Info(ctx context.Context) (*ServerInfo, error) {
-	var info ServerInfo
+func (c *RESTClient) Info(ctx context.Context) (*game.ServerInfo, error) {
+	var info game.ServerInfo
 	if err := c.do(ctx, http.MethodGet, "/v1/api/info", nil, &info); err != nil {
 		return nil, err
 	}
@@ -100,9 +102,9 @@ func (c *RESTClient) Info(ctx context.Context) (*ServerInfo, error) {
 	return &info, nil
 }
 
-func (c *RESTClient) Players(ctx context.Context) ([]Player, error) {
+func (c *RESTClient) Players(ctx context.Context) ([]game.Player, error) {
 	var out struct {
-		Players []Player `json:"players"`
+		Players []game.Player `json:"players"`
 	}
 	if err := c.do(ctx, http.MethodGet, "/v1/api/players", nil, &out); err != nil {
 		return nil, err
@@ -148,8 +150,8 @@ func (c *RESTClient) Settings(ctx context.Context) (map[string]any, error) {
 	return out, nil
 }
 
-func (c *RESTClient) Metrics(ctx context.Context) (*Metrics, error) {
-	var m Metrics
+func (c *RESTClient) Metrics(ctx context.Context) (*game.Metrics, error) {
+	var m game.Metrics
 	if err := c.do(ctx, http.MethodGet, "/v1/api/metrics", nil, &m); err != nil {
 		return nil, err
 	}

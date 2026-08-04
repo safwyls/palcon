@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/safwyls/palcon/internal/game"
 	"github.com/safwyls/palcon/internal/notify"
-	"github.com/safwyls/palcon/internal/palworld"
 	"github.com/safwyls/palcon/internal/store"
 )
 
@@ -117,14 +117,13 @@ func (c *Collector) sample(ctx context.Context, srv *store.Server) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	client := palworld.New(palworld.Config{
-		Host:         srv.Host,
-		RESTPort:     srv.RESTPort,
-		RESTPassword: srv.RESTPassword,
-		RCONPort:     srv.RCONPort,
-		RCONPassword: srv.RCONPassword,
-		PreferREST:   srv.UseREST,
-	})
+	client, err := srv.Client()
+	if err != nil {
+		// A row naming a game this build doesn't have. Logged once per
+		// sweep at info, not error: nothing here can fix it.
+		c.logger.Info("metrics collector: skipping server", "server", srv.ID, "name", srv.Name, "error", err)
+		return
+	}
 
 	// Reachability and join/leave watching rides the same tick, over the
 	// player list (which both transports can serve).
@@ -132,7 +131,7 @@ func (c *Collector) sample(ctx context.Context, srv *store.Server) {
 
 	// Metrics are REST-only; an RCON-only server has nothing to sample and
 	// isn't an error worth reporting.
-	ext, ok := client.(palworld.ExtendedClient)
+	ext, ok := client.(game.ExtendedClient)
 	if !ok {
 		return
 	}

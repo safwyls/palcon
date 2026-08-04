@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/safwyls/palcon/internal/palconfig"
+	"github.com/safwyls/palcon/internal/games/palworld/palconfig"
 )
 
 // supervisor runs PalServer as a child process — supervisor mode's core
@@ -112,11 +112,11 @@ func newSupervisor(cfg Config, jobsBusy func() bool) *supervisor {
 		serverName:    cfg.ServerName,
 		serverDesc:    cfg.ServerDesc,
 		grace:         grace,
-		backoffFloor: backoff,
-		logger:       cfg.Logger,
-		jobsBusy:     jobsBusy,
-		state:        "stopped",
-		desired:      "stopped",
+		backoffFloor:  backoff,
+		logger:        cfg.Logger,
+		jobsBusy:      jobsBusy,
+		state:         "stopped",
+		desired:       "stopped",
 	}
 }
 

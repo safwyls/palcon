@@ -9,11 +9,11 @@ import (
 func TestEncodeKeysDropsUnknownAndDuplicates(t *testing.T) {
 	// A renamed or removed feature must not survive in the column: it would be
 	// a hide nothing in the UI can see, and nothing can therefore undo.
-	got := encodeKeys([]string{FeaturePals, "not-a-feature", FeaturePals, FeatureMap}, AllFeatures)
+	got := encodeKeys([]string{FeaturePals, "not-a-feature", FeaturePals, FeatureMap}, AllFeatures())
 	if got != "map,pals" {
 		t.Fatalf("encodeKeys = %q, want %q", got, "map,pals")
 	}
-	if got := encodeKeys(nil, AllFeatures); got != "" {
+	if got := encodeKeys(nil, AllFeatures()); got != "" {
 		t.Fatalf("encodeKeys(nil) = %q, want empty", got)
 	}
 	// Streams are a different vocabulary; a feature key isn't a valid stream.

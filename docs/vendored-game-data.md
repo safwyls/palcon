@@ -37,7 +37,7 @@ same way: © Pocketpair, Inc., credited on-screen in the map view — see
 `web/public/README.md` for the fork/redistribution considerations.
 
 Not in `web/src/data/`, but vendored the same way: **`STATUS_NAMES` in
-`internal/palsave/extract_pals.py`** maps the Japanese stat names every save
+`internal/games/palworld/palsave/extract_pals.py`** maps the Japanese stat names every save
 uses — whatever language the server runs in — to English. Taken from
 palworld-save-pal's `STATUS_NAME_MAP` (`psp-core/src/domain/player.rs`), which
 is the full 18-entry set; the relic-granted "adventure" stats arrived with

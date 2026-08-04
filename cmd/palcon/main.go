@@ -22,12 +22,16 @@ import (
 	"github.com/safwyls/palcon/internal/crypto"
 	"github.com/safwyls/palcon/internal/db"
 	"github.com/safwyls/palcon/internal/dockerctl"
+	"github.com/safwyls/palcon/internal/games/palworld/palsave"
 	"github.com/safwyls/palcon/internal/notify"
-	"github.com/safwyls/palcon/internal/palsave"
 	"github.com/safwyls/palcon/internal/sched"
 	"github.com/safwyls/palcon/internal/store"
 	"github.com/safwyls/palcon/internal/watchdog"
 	"github.com/safwyls/palcon/web"
+
+	// Populates the game registry. Without it every server row would
+	// resolve to "unknown game" — see internal/games.
+	_ "github.com/safwyls/palcon/internal/games"
 )
 
 func main() {

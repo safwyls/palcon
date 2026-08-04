@@ -2,12 +2,10 @@ package palsave
 
 import (
 	"context"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
-	"time"
 )
 
 func havePython(t *testing.T, module string) bool {
@@ -45,170 +43,9 @@ func assertFixture(t *testing.T, result *Result) {
 	}
 }
 
-// A cached result for one save must return immediately even while another
-// save's parse holds the parse lock — with several servers configured, the
-// pals/map pages of server A shouldn't stall on server B's slow parse.
-func TestCachedReadNotBlockedByOtherParse(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-	dir := t.TempDir()
-	stub := filepath.Join(dir, "stub.py")
-	script := "import json, time\ntime.sleep(1)\nprint(json.dumps({\"players\": [], \"guilds\": []}))\n"
-	if err := os.WriteFile(stub, []byte(script), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	reader := &Reader{scriptPath: stub, cache: make(map[string]cacheEntry)}
-
-	makeSave := func(name string) string {
-		p := filepath.Join(dir, name)
-		if err := os.MkdirAll(p, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(p, "Level.sav"), []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return p
-	}
-	saveA, saveB := makeSave("a"), makeSave("b")
-
-	// Prime the cache for A (pays one stub parse).
-	if _, err := reader.Read(context.Background(), saveA); err != nil {
-		t.Fatal(err)
-	}
-
-	// B's parse runs in the background, holding the parse lock ~1s.
-	done := make(chan error, 1)
-	go func() {
-		_, err := reader.Read(context.Background(), saveB)
-		done <- err
-	}()
-	time.Sleep(100 * time.Millisecond) // let B reach the extractor
-
-	begin := time.Now()
-	if _, err := reader.Read(context.Background(), saveA); err != nil {
-		t.Fatal(err)
-	}
-	if d := time.Since(begin); d > 500*time.Millisecond {
-		t.Errorf("cached read for A blocked %v behind B's parse", d)
-	}
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-}
-
-// A stale entry must be served immediately — not block behind the re-parse —
-// and the re-parse must land in the cache shortly after.
-func TestReadServeStale(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-	dir := t.TempDir()
-	stub := filepath.Join(dir, "stub.py")
-	script := "import json, time\ntime.sleep(1)\nprint(json.dumps({\"players\": [], \"guilds\": []}))\n"
-	if err := os.WriteFile(stub, []byte(script), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	reader := &Reader{scriptPath: stub, cache: make(map[string]cacheEntry)}
-
-	save := filepath.Join(dir, "world")
-	if err := os.MkdirAll(save, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	sav := filepath.Join(save, "Level.sav")
-	if err := os.WriteFile(sav, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// First load has nothing to serve, so it blocks on the parse.
-	first, err := reader.ReadServeStale(context.Background(), save)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// The save moves on; the stale parse must come back without waiting the
-	// stub's full second.
-	if err := os.Chtimes(sav, time.Now(), time.Now().Add(2*time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	begin := time.Now()
-	stale, err := reader.ReadServeStale(context.Background(), save)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stale != first {
-		t.Fatal("expected the stale cached result while refresh runs")
-	}
-	if d := time.Since(begin); d > 500*time.Millisecond {
-		t.Errorf("stale serve blocked %v behind the refresh", d)
-	}
-
-	// The background refresh replaces the entry.
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		fresh, err := reader.ReadServeStale(context.Background(), save)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if fresh != first {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("background refresh never landed")
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-}
-
-// Refresh parses only when there is real work: a changed, settled save.
-func TestRefresh(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-	dir := t.TempDir()
-	stub := filepath.Join(dir, "stub.py")
-	script := "import json\nprint(json.dumps({\"players\": [], \"guilds\": []}))\n"
-	if err := os.WriteFile(stub, []byte(script), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	reader := &Reader{scriptPath: stub, cache: make(map[string]cacheEntry)}
-
-	save := filepath.Join(dir, "world")
-	if err := os.MkdirAll(save, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	sav := filepath.Join(save, "Level.sav")
-	if err := os.WriteFile(sav, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	settle := func(age time.Duration) {
-		if err := os.Chtimes(sav, time.Now(), time.Now().Add(-age)); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	settle(time.Minute)
-	if parsed, err := reader.Refresh(context.Background(), save); err != nil || !parsed {
-		t.Fatalf("cold refresh: parsed=%v err=%v, want a parse", parsed, err)
-	}
-	if parsed, err := reader.Refresh(context.Background(), save); err != nil || parsed {
-		t.Fatalf("fresh refresh: parsed=%v err=%v, want a no-op", parsed, err)
-	}
-
-	// Just-written saves are left alone until they settle.
-	if err := os.Chtimes(sav, time.Now(), time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	if parsed, err := reader.Refresh(context.Background(), save); err != nil || parsed {
-		t.Fatalf("unsettled refresh: parsed=%v err=%v, want a no-op", parsed, err)
-	}
-
-	// Once settled, the change is picked up.
-	settle(10 * time.Second)
-	if parsed, err := reader.Refresh(context.Background(), save); err != nil || !parsed {
-		t.Fatalf("settled refresh: parsed=%v err=%v, want a parse", parsed, err)
-	}
-}
+// Freshness, single-flight parsing, stale-serving and the settle window are
+// internal/savecache's behaviour and are tested there. What's left here is
+// what's actually Palworld's: the extractor and the schema it produces.
 
 // assertInventory checks the item containers the newlayout fixture carries.
 // Slot data is packed into each slot's RawData, and gear/egg state lives in a

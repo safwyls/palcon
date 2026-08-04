@@ -102,6 +102,12 @@ export interface ContainerState {
 export interface Server {
   id: number;
   name: string;
+  /** Which game this server runs ("palworld"). Picks the per-game labels in
+   * lib/games — the rest of the console is game-agnostic. */
+  game: string;
+  /** Views this server's game can fill, in nav order. Distinct from
+   * hiddenFeatures: this is what exists, that is what an admin switched off. */
+  features: Feature[];
   host: string;
   rconPort: number;
   hasRconPassword: boolean;

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/safwyls/palcon/internal/game"
 )
 
 // stubClient counts calls and fails every operation with err when set.
@@ -18,18 +20,18 @@ func (s *stubClient) op() error {
 	return s.err
 }
 
-func (s *stubClient) Info(context.Context) (*ServerInfo, error) {
+func (s *stubClient) Info(context.Context) (*game.ServerInfo, error) {
 	if err := s.op(); err != nil {
 		return nil, err
 	}
-	return &ServerInfo{Transport: "stub"}, nil
+	return &game.ServerInfo{Transport: "stub"}, nil
 }
 
-func (s *stubClient) Players(context.Context) ([]Player, error) {
+func (s *stubClient) Players(context.Context) ([]game.Player, error) {
 	if err := s.op(); err != nil {
 		return nil, err
 	}
-	return []Player{}, nil
+	return []game.Player{}, nil
 }
 
 func (s *stubClient) Broadcast(context.Context, string) error     { return s.op() }

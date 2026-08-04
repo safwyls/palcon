@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/safwyls/palcon/internal/agentfiles"
-	"github.com/safwyls/palcon/internal/palsave"
 	"github.com/safwyls/palcon/internal/store"
 )
 
@@ -16,12 +15,21 @@ const (
 	// stay tight without costing anything.
 	savePollEvery = 15 * time.Second
 	// saveAttemptFloor is the minimum gap between parse attempts for one
-	// save. Palworld can autosave every 30 seconds and a big world costs
-	// seconds of CPU per parse, so freshness is capped at roughly this
+	// save. Games autosave as often as every 30 seconds and a big world
+	// costs seconds of CPU per parse, so freshness is capped at roughly this
 	// rather than chasing every autosave. It also spaces out retries when a
 	// save keeps failing to parse.
 	saveAttemptFloor = 45 * time.Second
 )
+
+// SaveReader is the part of a game's save reader this warmer needs. Narrow on
+// purpose: it keeps the collector free of any one game's save schema, so the
+// same loop warms whatever reader a server's game supplies.
+type SaveReader interface {
+	// Refresh re-parses the save if it has changed, reporting whether a
+	// parse was actually attempted.
+	Refresh(ctx context.Context, savePath string) (bool, error)
+}
 
 // SaveRefresher keeps the shared save-parse cache warm by re-parsing each
 // enabled server's save shortly after the game writes it, so the pals and
@@ -29,7 +37,7 @@ const (
 // It also warms every save once at startup, which covers restarts.
 type SaveRefresher struct {
 	store  *store.Store
-	reader *palsave.Reader
+	reader SaveReader
 	files  *agentfiles.Syncer
 	logger *slog.Logger
 
@@ -38,7 +46,7 @@ type SaveRefresher struct {
 	nextAttempt map[int64]time.Time
 }
 
-func NewSaveRefresher(st *store.Store, reader *palsave.Reader, files *agentfiles.Syncer, logger *slog.Logger) *SaveRefresher {
+func NewSaveRefresher(st *store.Store, reader SaveReader, files *agentfiles.Syncer, logger *slog.Logger) *SaveRefresher {
 	return &SaveRefresher{store: st, reader: reader, files: files, logger: logger, nextAttempt: make(map[int64]time.Time)}
 }
 

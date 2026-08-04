@@ -10,29 +10,29 @@ import (
 
 	"github.com/safwyls/palcon/internal/crypto"
 	"github.com/safwyls/palcon/internal/db"
-	"github.com/safwyls/palcon/internal/palworld"
+	"github.com/safwyls/palcon/internal/game"
 	"github.com/safwyls/palcon/internal/store"
 )
 
 // stubClient serves a fixed player list; only Players is exercised by the
 // watch loop, the rest satisfies the interface.
-type stubClient struct{ players []palworld.Player }
+type stubClient struct{ players []game.Player }
 
-func (s *stubClient) Info(context.Context) (*palworld.ServerInfo, error) {
-	return &palworld.ServerInfo{}, nil
+func (s *stubClient) Info(context.Context) (*game.ServerInfo, error) {
+	return &game.ServerInfo{}, nil
 }
-func (s *stubClient) Players(context.Context) ([]palworld.Player, error) { return s.players, nil }
-func (s *stubClient) Broadcast(context.Context, string) error            { return nil }
-func (s *stubClient) Kick(context.Context, string, string) error         { return nil }
-func (s *stubClient) Ban(context.Context, string, string) error          { return nil }
-func (s *stubClient) Unban(context.Context, string) error                { return nil }
-func (s *stubClient) Save(context.Context) error                         { return nil }
-func (s *stubClient) Shutdown(context.Context, int, string) error        { return nil }
+func (s *stubClient) Players(context.Context) ([]game.Player, error) { return s.players, nil }
+func (s *stubClient) Broadcast(context.Context, string) error        { return nil }
+func (s *stubClient) Kick(context.Context, string, string) error     { return nil }
+func (s *stubClient) Ban(context.Context, string, string) error      { return nil }
+func (s *stubClient) Unban(context.Context, string) error            { return nil }
+func (s *stubClient) Save(context.Context) error                     { return nil }
+func (s *stubClient) Shutdown(context.Context, int, string) error    { return nil }
 
 func online(names ...string) *stubClient {
 	c := &stubClient{}
 	for _, n := range names {
-		c.players = append(c.players, palworld.Player{Name: n, UserID: "steam_" + n})
+		c.players = append(c.players, game.Player{Name: n, UserID: "steam_" + n})
 	}
 	return c
 }

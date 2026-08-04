@@ -3,11 +3,25 @@ import type { Feature, Server } from "./api";
 /**
  * Which views a signed-in user gets.
  *
- * Admins bypass every switch — the point of the feature is letting a server
- * owner honour a privacy request without blinding themselves for moderation.
- * The API enforces the same rule; this only decides what the nav offers, so a
- * disagreement between the two costs a 403, not a leak.
+ * Two different questions, deliberately kept apart:
+ *  - does this server's game have this view at all (server.features), and
+ *  - has an admin switched it off for this server (server.hiddenFeatures)?
+ *
+ * The first is a fact about the game and applies to everyone including admins.
+ * The second is a privacy switch, and admins bypass it — the point of the
+ * feature is letting a server owner honour a privacy request without blinding
+ * themselves for moderation. The API enforces the same rules; a disagreement
+ * costs a 403, not a leak.
+ *
+ * Human-readable names for these keys are per-game and live in lib/games.
  */
+
+/** Does this server's game offer the view at all? */
+export function featureExists(server: Server | undefined, feature: Feature): boolean {
+  // An older payload with no features list is Palworld, which has them all.
+  if (!server?.features) return true;
+  return server.features.includes(feature);
+}
 
 /** Raw flag: has an admin switched this view off for this server? */
 export function featureOff(server: Server | undefined, feature: Feature): boolean {
@@ -16,31 +30,11 @@ export function featureOff(server: Server | undefined, feature: Feature): boolea
 
 /** Whether this user should be offered the view at all. */
 export function canSeeFeature(server: Server | undefined, feature: Feature, isAdmin: boolean): boolean {
+  if (!featureExists(server, feature)) return false;
   return isAdmin || !featureOff(server, feature);
 }
 
-/** Human names, for nav labels and the settings switches. Kept here so the
- * label and the key that gates it can't drift apart. */
-export const FEATURE_LABELS: Record<Feature, string> = {
-  map: "Live map",
-  pals: "Player pals",
-  inventory: "Inventory",
-  storage: "Storage",
-  paldex: "Paldex",
-  achievements: "Achievements",
-  guilds: "Guilds",
-  calculators: "Calculators",
-};
-
-/** What each view exposes, for the settings page. Written from the player's
- * side — what someone would be agreeing to when they ask to be hidden. */
-export const FEATURE_BLURBS: Record<Feature, string> = {
-  map: "Where players are now, and where they logged off",
-  pals: "Every player's pals, with IVs and passives",
-  inventory: "What each player is carrying, wearing and hoarding",
-  storage: "What's in every chest and box at the guild's bases",
-  paldex: "Paldex completion and capture counts per player",
-  achievements: "Which towers, raids and bosses each player has beaten",
-  guilds: "Guild rosters, bases and shared pal totals",
-  calculators: "Breeding tools that read the pals in your boxes",
-};
+/** The views this server offers, in nav order. */
+export function serverFeatures(server: Server | undefined): Feature[] {
+  return server?.features ?? [];
+}

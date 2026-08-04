@@ -29,7 +29,7 @@ web/dist-demo/
 
 # Real Palworld saves used for local debugging. These hold player names and
 # platform account IDs, and are far too big for the repo — the committed
-# fixtures in internal/palsave/testdata/ are synthetic instead.
+# fixtures in internal/games/palworld/palsave/testdata/ are synthetic instead.
 /localsaves/
 
 # Python bytecode from the save extractor
@@ -40,5 +40,5 @@ __pycache__/
 .vscode/
 .idea/
 *.swp
-internal/palsave/testdata/newlayout/Players/11111111111111111111111111111111_dps.sav
-internal/palsave/testdata/newlayout/GlobalPalStorage.sav
+internal/games/palworld/palsave/testdata/newlayout/Players/11111111111111111111111111111111_dps.sav
+internal/games/palworld/palsave/testdata/newlayout/GlobalPalStorage.sav

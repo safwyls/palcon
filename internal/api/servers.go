@@ -14,23 +14,29 @@ import (
 // passwords, only whether they're set, so the frontend can prompt the
 // user to enter a new one without ever displaying the old one.
 type serverDTO struct {
-	ID              int64  `json:"id"`
-	Name            string `json:"name"`
-	Host            string `json:"host"`
-	RCONPort        int    `json:"rconPort"`
-	HasRCONPassword bool   `json:"hasRconPassword"`
-	RESTPort        int    `json:"restPort"`
-	HasRESTPassword bool   `json:"hasRestPassword"`
-	GamePort        int    `json:"gamePort"`
-	JoinAddress     string `json:"joinAddress"`
-	UseREST         bool   `json:"useRest"`
-	Enabled         bool   `json:"enabled"`
-	SavePath        string `json:"savePath"`
-	ConfigPath      string `json:"configPath"`
-	InstallPath     string `json:"installPath"`
-	AgentURL        string `json:"agentUrl"`
-	HasAgentToken   bool   `json:"hasAgentToken"`
-	ContainerName   string `json:"containerName"`
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	// Game is the registered game id this server runs, and Features the
+	// views that game can fill, in nav order. Together they are what lets
+	// the frontend build a nav for a game it wasn't compiled against
+	// knowing about, instead of hardcoding one game's view list.
+	Game            string   `json:"game"`
+	Features        []string `json:"features"`
+	Host            string   `json:"host"`
+	RCONPort        int      `json:"rconPort"`
+	HasRCONPassword bool     `json:"hasRconPassword"`
+	RESTPort        int      `json:"restPort"`
+	HasRESTPassword bool     `json:"hasRestPassword"`
+	GamePort        int      `json:"gamePort"`
+	JoinAddress     string   `json:"joinAddress"`
+	UseREST         bool     `json:"useRest"`
+	Enabled         bool     `json:"enabled"`
+	SavePath        string   `json:"savePath"`
+	ConfigPath      string   `json:"configPath"`
+	InstallPath     string   `json:"installPath"`
+	AgentURL        string   `json:"agentUrl"`
+	HasAgentToken   bool     `json:"hasAgentToken"`
+	ContainerName   string   `json:"containerName"`
 	// Views an admin has switched off for this server. Sent to every signed-in
 	// user because the nav has to know what to leave out; it names the hidden
 	// views, never their contents. Admins still get the data behind them.
@@ -41,6 +47,8 @@ func toDTO(srv *store.Server) serverDTO {
 	return serverDTO{
 		ID:              srv.ID,
 		Name:            srv.Name,
+		Game:            srv.Game,
+		Features:        srv.Features(),
 		Host:            srv.Host,
 		RCONPort:        srv.RCONPort,
 		HasRCONPassword: srv.RCONPassword != "",

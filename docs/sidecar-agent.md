@@ -30,7 +30,7 @@ palcon becomes a pure control plane speaking HTTP to it.
   operations. A compromised palcon (or leaked token) can bounce/repair one
   game server and touch its files — nothing else.
 - **Same repo, second binary.** `cmd/palagent`, sharing internal packages
-  (e.g. `internal/steamops`) with palcon so file operations behave
+  (e.g. `internal/steamcmd`) with palcon so file operations behave
   identically whichever side executes them. Published as its own image
   (`Dockerfile.palagent`), versioned with a compatibility handshake.
 

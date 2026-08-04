@@ -1,8 +1,12 @@
-// Package steamops holds the SteamCMD-adjacent file operations shared by
+// Package steamcmd holds the SteamCMD-adjacent file operations shared by
 // palcon (running them against a local bind mount) and palagent (running
 // them next to the game server). One implementation, two executors, so the
 // behavior can't drift between deployment styles.
-package steamops
+//
+// Nothing here is game-specific: SteamCMD lays out every dedicated server the
+// same way, so the app id is a parameter and the cache directories are the
+// same for all of them. Each game's id comes from its game.Definition.
+package steamcmd
 
 import (
 	"errors"
@@ -12,10 +16,7 @@ import (
 	"strconv"
 )
 
-// PalworldAppID is the Steam app id of the Palworld dedicated server.
-const PalworldAppID = 2394010
-
-// cacheDirs are the directories, relative to the Palworld install root,
+// cacheDirs are the directories, relative to a server's install root,
 // whose contents SteamCMD rebuilds from scratch: appmanifest files and
 // partial downloads under steamapps/, and cached package payloads under
 // steam/packages/. A game update sometimes leaves both corrupted, after
@@ -23,7 +24,7 @@ const PalworldAppID = 2394010
 var cacheDirs = []string{"steamapps", filepath.Join("steam", "packages")}
 
 // ErrNotInstallRoot means neither cache directory exists under the given
-// path — it isn't a Palworld install root (or isn't mounted), and reporting
+// path — it isn't a server install root (or isn't mounted), and reporting
 // a no-op success would leave the user's real cache corrupted.
 var ErrNotInstallRoot = errors.New("neither steamapps/ nor steam/packages/ exists — check the install path")
 

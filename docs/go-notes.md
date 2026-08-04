@@ -7,7 +7,7 @@ A working reference for Go, using palcon's own code as examples. Every section l
 In Go, **one directory = one package**. There's no per-file import list to maintain like JS's module graph — every `.go` file in a directory shares the same package namespace automatically.
 
 - [internal/store/store.go](../internal/store/store.go), [internal/store/servers.go](../internal/store/servers.go), and [internal/store/users.go](../internal/store/users.go) are three files, one package (`store`). They freely reference each other's types with no imports between them.
-- `internal/` is a special directory name the Go toolchain enforces: anything under `internal/` can only be imported by code inside the parent of that `internal/` directory (here, anything under the module root). Other modules importing yours as a dependency couldn't reach `internal/palworld` even if they wanted to. It's Go's built-in way of marking "not part of the public API."
+- `internal/` is a special directory name the Go toolchain enforces: anything under `internal/` can only be imported by code inside the parent of that `internal/` directory (here, anything under the module root). Other modules importing yours as a dependency couldn't reach `internal/games/palworld` even if they wanted to. It's Go's built-in way of marking "not part of the public API."
 
 ## 2. Import paths and the module system
 
@@ -43,13 +43,13 @@ func (s *Store) GetServer(ctx context.Context, id int64) (*Server, error) {
 — [internal/store/servers.go:91](../internal/store/servers.go#L91)
 
 - `(s *Store)` is the **receiver**. `s` is just a variable name (by convention, a short abbreviation of the type — `s` for `Store`/`Server`, `c` for `Client`, `b` for `Box`).
-- **Pointer receiver** (`*Store`) vs **value receiver** (`Store`, no star): pointer receivers can mutate the underlying value and avoid copying; value receivers get their own copy. The convention in this codebase (and most Go code) is: use a pointer receiver if *any* method on the type needs one, for consistency. Every method here uses pointer receivers — [RCONClient](../internal/palworld/rcon.go#L20), [Store](../internal/store/store.go#L11), [Server](../internal/api/server.go#L17), [Box](../internal/crypto/secretbox.go#L15) — all called as `c.exec(...)`, `s.store.GetServer(...)`, etc.
+- **Pointer receiver** (`*Store`) vs **value receiver** (`Store`, no star): pointer receivers can mutate the underlying value and avoid copying; value receivers get their own copy. The convention in this codebase (and most Go code) is: use a pointer receiver if *any* method on the type needs one, for consistency. Every method here uses pointer receivers — [RCONClient](../internal/games/palworld/rcon.go#L15), [Store](../internal/store/store.go#L11), [Server](../internal/api/server.go#L17), [Box](../internal/crypto/secretbox.go#L15) — all called as `c.exec(...)`, `s.store.GetServer(...)`, etc.
 
 ## 5. Interfaces are satisfied implicitly
 
 No `implements` keyword. A type satisfies an interface just by having the right methods — this is Go's version of duck typing, checked at compile time.
 
-[internal/palworld/client.go:29-38](../internal/palworld/client.go#L29-L38) defines:
+[internal/game/client.go:66-76](../internal/game/client.go#L66-L76) defines:
 ```go
 type Client interface {
 	Info(ctx context.Context) (*ServerInfo, error)
@@ -57,7 +57,7 @@ type Client interface {
 	...
 }
 ```
-Nothing in [rest.go](../internal/palworld/rest.go), [rcon.go](../internal/palworld/rcon.go), or [fallback.go](../internal/palworld/fallback.go) says "`RESTClient` implements `Client`" anywhere. It just does, because `*RESTClient`, `*RCONClient`, and `*fallbackClient` each happen to have all six methods with matching signatures. [client.go:55](../internal/palworld/client.go#L55)'s `New()` function returns the plain `Client` interface type, and callers (like [internal/api/actions.go](../internal/api/actions.go)) never know or care which concrete type they got.
+Nothing in [rest.go](../internal/games/palworld/rest.go), [rcon.go](../internal/games/palworld/rcon.go), or [fallback.go](../internal/games/palworld/fallback.go) says "`RESTClient` implements `Client`" anywhere. It just does, because `*RESTClient`, `*RCONClient`, and `*fallbackClient` each happen to have all six methods with matching signatures. [palworld.go:40](../internal/games/palworld/palworld.go#L40)'s `New()` function returns the plain `Client` interface type, and callers (like [internal/api/actions.go](../internal/api/actions.go)) never know or care which concrete type they got.
 
 This is the idiomatic Go way to get polymorphism/swappable implementations — define the interface at the *consumer* side (small, just what's needed), not attached to the implementation.
 
@@ -79,7 +79,7 @@ This `if err != nil { ... }` block appears constantly — it's not boilerplate t
   ```go
   return fmt.Errorf("rcon dial %s: %w", c.addr, err)
   ```
-  — [internal/palworld/rcon.go:45](../internal/palworld/rcon.go#L45). This is why the error you saw during smoke-testing read `"rcon dial 127.0.0.1:25575: dial tcp ...: connection refused"` — each layer added its own context and wrapped the one below it.
+  — [internal/rcon/rcon.go:88](../internal/rcon/rcon.go#L88). This is why the error you saw during smoke-testing read `"rcon dial 127.0.0.1:25575: dial tcp ...: connection refused"` — each layer added its own context and wrapped the one below it.
 - **Sentinel errors** — plain values you compare against directly, for expected/known failure cases:
   ```go
   var ErrNotFound = errors.New("not found")
@@ -149,7 +149,7 @@ The server runs in a background goroutine; the main goroutine blocks on `select`
 
 - [cmd/palcon/main.go:42](../cmd/palcon/main.go#L42): `defer sqlDB.Close()` — the DB connection closes no matter how `run()` exits.
 - [internal/store/servers.go:74](../internal/store/servers.go#L74): `defer rows.Close()` right after a successful query — a very common Go idiom, deferring the close immediately next to the open/acquire, so it's never forgotten in a later edit.
-- [internal/palworld/rcon.go:47](../internal/palworld/rcon.go#L47): `defer conn.Close()` on a raw TCP connection.
+- [internal/rcon/rcon.go:94](../internal/rcon/rcon.go#L94): `defer conn.Close()` on a raw TCP connection.
 
 Rule of thumb: whenever you acquire something that needs releasing (file handle, DB rows, network conn, mutex lock), `defer` the release on the very next line.
 
@@ -161,9 +161,9 @@ Rule of thumb: whenever you acquire something that needs releasing (file handle,
 
 ## 13. Constructors are a convention, not a language feature
 
-There's no `constructor` keyword. The convention is a plain function named `New` (or `NewThing` if a package has several constructible types), returning the type — see [internal/store/store.go:16](../internal/store/store.go#L16) `func New(db *sql.DB, box *crypto.Box) *Store`, [internal/crypto/secretbox.go:19](../internal/crypto/secretbox.go#L19) `func New(key []byte) (*Box, error)`, [internal/palworld/client.go:55](../internal/palworld/client.go#L55) `func New(cfg Config) Client`.
+There's no `constructor` keyword. The convention is a plain function named `New` (or `NewThing` if a package has several constructible types), returning the type — see [internal/store/store.go:16](../internal/store/store.go#L16) `func New(db *sql.DB, box *crypto.Box) *Store`, [internal/crypto/secretbox.go:19](../internal/crypto/secretbox.go#L19) `func New(key []byte) (*Box, error)`, [internal/games/palworld/palworld.go:40](../internal/games/palworld/palworld.go#L40) `func New(conn game.Conn) game.Client`.
 
-Structs are also usable directly via zero values or struct literals with no constructor at all when there's nothing to validate — e.g. [internal/palworld/rest.go:15-19](../internal/palworld/rest.go#L15-L19)'s `RESTClient{baseURL: ..., password: ...}` literal in [client.go:63-66](../internal/palworld/client.go#L63-L66), no `NewRESTClient` needed.
+Structs are also usable directly via zero values or struct literals with no constructor at all when there's nothing to validate — e.g. [internal/games/palworld/rest.go:16-21](../internal/games/palworld/rest.go#L16-L21)'s `RESTClient{baseURL: ..., password: ...}` literal in [palworld.go:50-53](../internal/games/palworld/palworld.go#L50-L53), no `NewRESTClient` needed.
 
 ## 14. `go build`, `go vet`, `gofmt` — the toolchain does the nagging
 

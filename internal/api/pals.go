@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"github.com/safwyls/palcon/internal/agentfiles"
-	"github.com/safwyls/palcon/internal/palsave"
-	"github.com/safwyls/palcon/internal/palworld"
+	"github.com/safwyls/palcon/internal/games/palworld/palsave"
 	"github.com/safwyls/palcon/internal/store"
 )
 
@@ -68,36 +67,49 @@ func (s *Server) handleServerPals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"players":     toPalsPlayers(visiblePlayers(result.Players, hidden, store.StreamPals), s.lastSeen(r, srv.ID)),
+		"players":     toPalsPlayers(visiblePlayers(result.Players, hidden, store.StreamPals), s.lastSeen(r, srv)),
 		"guilds":      result.Guilds,
 		"parsedAt":    result.ParsedAt,
 		"saveModTime": result.SaveModTime,
 	})
 }
 
-// lastSeen is when the collector last watched each of this server's players,
-// keyed by save uid. Nil on failure rather than an error: it decorates a
-// payload that is worth serving without it, and the views fall back to the
-// save's own login stamp.
-func (s *Server) lastSeen(r *http.Request, serverID int64) map[string]time.Time {
-	seen, err := s.store.LastSeen(r.Context(), serverID)
-	if err != nil {
-		s.logger.Error("reading last-seen history", "server", serverID, "error", err)
-		return nil
-	}
-	return seen
+// lastSeenIndex is when the collector last watched each of a server's
+// players. The collector writes canonical uids, so lookups by a save's uid go
+// through the same spelling — carried here rather than passed around, because
+// a missed normalization fails silently as "never seen" rather than erroring.
+type lastSeenIndex struct {
+	at    map[string]time.Time
+	canon func(string) string
 }
 
-// lastSeenUnix reads a player's observed last-seen out of the map, in the unix
-// seconds the save's own timestamps use. Zero means palcon never watched this
-// player leave — a server it has not collected for yet, or history predating
-// the uid column — and the views treat zero as "fall back to the save".
-func lastSeenUnix(seen map[string]time.Time, uid string) int64 {
-	at, ok := seen[palworld.CanonicalUID(uid)]
+// Unix is a player's observed last-seen, in the unix seconds the save's own
+// timestamps use. Zero means palcon never watched this player leave — a
+// server it has not collected for yet, or history predating the uid column —
+// and the views treat zero as "fall back to the save".
+func (i lastSeenIndex) Unix(uid string) int64 {
+	if i.canon != nil {
+		uid = i.canon(uid)
+	}
+	at, ok := i.at[uid]
 	if !ok || at.IsZero() {
 		return 0
 	}
 	return at.Unix()
+}
+
+// lastSeen reads the collector's history for this server. An empty index on
+// failure rather than an error: it decorates a payload that is worth serving
+// without it, and the views fall back to the save's own login stamp.
+func (s *Server) lastSeen(r *http.Request, srv *store.Server) lastSeenIndex {
+	idx := lastSeenIndex{canon: srv.CanonicalUID}
+	seen, err := s.store.LastSeen(r.Context(), srv.ID)
+	if err != nil {
+		s.logger.Error("reading last-seen history", "server", srv.ID, "error", err)
+		return idx
+	}
+	idx.at = seen
+	return idx
 }
 
 // visiblePlayers drops the players withheld from this stream. Returns the
@@ -152,7 +164,7 @@ type palsPlayer struct {
 	Captures         map[string]int `json:"captures"`
 }
 
-func toPalsPlayers(players []palsave.PlayerPals, seen map[string]time.Time) []palsPlayer {
+func toPalsPlayers(players []palsave.PlayerPals, seen lastSeenIndex) []palsPlayer {
 	out := make([]palsPlayer, 0, len(players))
 	for _, p := range players {
 		out = append(out, palsPlayer{
@@ -164,7 +176,7 @@ func toPalsPlayers(players []palsave.PlayerPals, seen map[string]time.Time) []pa
 			Base:             p.Base,
 			Storage:          p.Storage,
 			LastOnline:       p.LastOnline,
-			LastSeen:         lastSeenUnix(seen, p.UID),
+			LastSeen:         seen.Unix(p.UID),
 			LastX:            p.LastX,
 			LastY:            p.LastY,
 			Platform:         p.Platform,
@@ -206,7 +218,7 @@ func (s *Server) handleServerInventory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	seen := s.lastSeen(r, srv.ID)
+	seen := s.lastSeen(r, srv)
 	players := make([]inventoryPlayer, 0, len(result.Players))
 	for _, p := range visiblePlayers(result.Players, hidden, store.StreamInventory) {
 		// A player with no containers at all has nothing to show; skipping
@@ -222,7 +234,7 @@ func (s *Server) handleServerInventory(w http.ResponseWriter, r *http.Request) {
 			Inventory:  p.Inventory,
 			Character:  p.Character,
 			LastOnline: p.LastOnline,
-			LastSeen:   lastSeenUnix(seen, p.UID),
+			LastSeen:   seen.Unix(p.UID),
 			Platform:   p.Platform,
 		})
 	}
@@ -266,7 +278,7 @@ func (s *Server) handleServerAchievements(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	seen := s.lastSeen(r, srv.ID)
+	seen := s.lastSeen(r, srv)
 	players := make([]achievementsPlayer, 0, len(result.Players))
 	for _, p := range visiblePlayers(result.Players, hidden, store.StreamPals) {
 		players = append(players, achievementsPlayer{
@@ -275,7 +287,7 @@ func (s *Server) handleServerAchievements(w http.ResponseWriter, r *http.Request
 			Level:      p.Level,
 			Records:    p.Records,
 			LastOnline: p.LastOnline,
-			LastSeen:   lastSeenUnix(seen, p.UID),
+			LastSeen:   seen.Unix(p.UID),
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -403,7 +415,7 @@ func (s *Server) handleServerGuilds(w http.ResponseWriter, r *http.Request) {
 	players := withoutPositions(visiblePlayers(result.Players, hidden, store.StreamPals), hidden)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"guilds":      result.Guilds,
-		"players":     toPalsPlayers(players, s.lastSeen(r, srv.ID)),
+		"players":     toPalsPlayers(players, s.lastSeen(r, srv)),
 		"parsedAt":    result.ParsedAt,
 		"saveModTime": result.SaveModTime,
 	})

@@ -137,6 +137,8 @@ const state = {
 const SERVER: Server = {
   id: 1,
   name: "Verdant Isle",
+  game: "palworld",
+  features: [...FEATURES],
   host: "10.0.0.5",
   rconPort: 25575,
   hasRconPassword: true,

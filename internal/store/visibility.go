@@ -4,27 +4,32 @@ import (
 	"context"
 	"sort"
 	"strings"
+
+	"github.com/safwyls/palcon/internal/game"
 )
 
 // Views an admin can switch off per server. The keys double as the frontend's
 // route names, so a disabled feature hides its nav link and refuses its data
 // with the same string.
+//
+// Which views exist at all is a property of the game, so the catalog lives in
+// internal/game and these are aliases — the store's job is only to remember
+// which of them an admin switched off.
 const (
-	FeatureMap          = "map"
-	FeaturePals         = "pals"
-	FeatureInventory    = "inventory"
-	FeatureStorage      = "storage"
-	FeaturePaldex       = "paldex"
-	FeatureAchievements = "achievements"
-	FeatureGuilds       = "guilds"
-	FeatureCalculators  = "calculators"
+	FeatureMap          = game.FeatureMap
+	FeaturePals         = game.FeaturePals
+	FeatureInventory    = game.FeatureInventory
+	FeatureStorage      = game.FeatureStorage
+	FeaturePaldex       = game.FeaturePaldex
+	FeatureAchievements = game.FeatureAchievements
+	FeatureGuilds       = game.FeatureGuilds
+	FeatureCalculators  = game.FeatureCalculators
 )
 
-// AllFeatures is the menu the settings UI offers, in nav order.
-var AllFeatures = []string{
-	FeatureMap, FeaturePals, FeatureInventory, FeatureStorage, FeaturePaldex,
-	FeatureAchievements, FeatureGuilds, FeatureCalculators,
-}
+// AllFeatures is every view any registered game offers, in nav order — the
+// validation set for stored switches. Per-server, what the UI should offer is
+// the server's own Definition.Features.
+func AllFeatures() []string { return game.AllFeatures() }
 
 // Streams a single player can be withheld from. Deliberately coarser than the
 // view list: Player pals, Paldex and Calculators all read one payload, so they
@@ -99,7 +104,7 @@ func (s *Store) SetHidePrivateStorage(ctx context.Context, serverID int64, hide 
 func (s *Store) SetHiddenFeatures(ctx context.Context, serverID int64, hidden []string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE servers SET hidden_features = ? WHERE id = ?`,
-		encodeKeys(hidden, AllFeatures), serverID)
+		encodeKeys(hidden, AllFeatures()), serverID)
 	return err
 }
 

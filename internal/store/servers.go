@@ -6,16 +6,21 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/safwyls/palcon/internal/game"
 )
 
 var ErrNotFound = errors.New("not found")
 
 // Server is the decrypted, application-facing view of a servers row.
 // RCONPassword/RESTPassword are only populated when explicitly needed
-// (e.g. to build a palworld.Client) and are never serialized to the API.
+// (e.g. to build a game client) and are never serialized to the API.
 type Server struct {
-	ID           int64
-	Name         string
+	ID   int64
+	Name string
+	// Game is the registered game.Definition id this server runs
+	// ("palworld"). Empty means the default — see game.Get.
+	Game         string
 	Host         string
 	RCONPort     int
 	RCONPassword string
@@ -80,6 +85,7 @@ type Server struct {
 type serverRow struct {
 	ID              int64
 	Name            string
+	Game            string
 	Host            string
 	RCONPort        int
 	RCONPasswordEnc string
@@ -119,6 +125,7 @@ func (s *Store) decryptServer(r serverRow) (*Server, error) {
 	return &Server{
 		ID:                  r.ID,
 		Name:                r.Name,
+		Game:                r.Game,
 		Host:                r.Host,
 		RCONPort:            r.RCONPort,
 		RCONPassword:        rconPass,
@@ -143,11 +150,11 @@ func (s *Store) decryptServer(r serverRow) (*Server, error) {
 	}, nil
 }
 
-const serverColumns = `id, name, host, rcon_port, rcon_password_enc, rest_port, rest_password_enc, game_port, join_address, use_rest, enabled, save_path, config_path, install_path, agent_url, agent_token_enc, container_name, watchdog, public_token, backup_interval_hours, backup_keep, hidden_features, hide_private_storage`
+const serverColumns = `id, name, game, host, rcon_port, rcon_password_enc, rest_port, rest_password_enc, game_port, join_address, use_rest, enabled, save_path, config_path, install_path, agent_url, agent_token_enc, container_name, watchdog, public_token, backup_interval_hours, backup_keep, hidden_features, hide_private_storage`
 
 func scanServerRow(scan func(dest ...any) error) (serverRow, error) {
 	var r serverRow
-	err := scan(&r.ID, &r.Name, &r.Host, &r.RCONPort, &r.RCONPasswordEnc, &r.RESTPort, &r.RESTPasswordEnc, &r.GamePort, &r.JoinAddress, &r.UseREST, &r.Enabled, &r.SavePath, &r.ConfigPath, &r.InstallPath, &r.AgentURL, &r.AgentTokenEnc, &r.ContainerName, &r.Watchdog, &r.PublicToken, &r.BackupInterval, &r.BackupKeep, &r.HiddenFeatures, &r.HidePrivate)
+	err := scan(&r.ID, &r.Name, &r.Game, &r.Host, &r.RCONPort, &r.RCONPasswordEnc, &r.RESTPort, &r.RESTPasswordEnc, &r.GamePort, &r.JoinAddress, &r.UseREST, &r.Enabled, &r.SavePath, &r.ConfigPath, &r.InstallPath, &r.AgentURL, &r.AgentTokenEnc, &r.ContainerName, &r.Watchdog, &r.PublicToken, &r.BackupInterval, &r.BackupKeep, &r.HiddenFeatures, &r.HidePrivate)
 	return r, err
 }
 
@@ -201,9 +208,9 @@ func (s *Store) CreateServer(ctx context.Context, srv *Server) (int64, error) {
 		return 0, err
 	}
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO servers (name, host, rcon_port, rcon_password_enc, rest_port, rest_password_enc, game_port, join_address, use_rest, enabled, save_path, config_path, install_path, agent_url, agent_token_enc, container_name)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		srv.Name, srv.Host, srv.RCONPort, rconEnc, srv.RESTPort, restEnc, normalizeGamePort(srv.GamePort), strings.TrimSpace(srv.JoinAddress), boolToInt(srv.UseREST), boolToInt(srv.Enabled), srv.SavePath, srv.ConfigPath, srv.InstallPath, srv.AgentURL, agentEnc, srv.ContainerName)
+		INSERT INTO servers (name, game, host, rcon_port, rcon_password_enc, rest_port, rest_password_enc, game_port, join_address, use_rest, enabled, save_path, config_path, install_path, agent_url, agent_token_enc, container_name)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		srv.Name, normalizeGame(srv.Game), srv.Host, srv.RCONPort, rconEnc, srv.RESTPort, restEnc, normalizeGamePort(srv.Game, srv.GamePort), strings.TrimSpace(srv.JoinAddress), boolToInt(srv.UseREST), boolToInt(srv.Enabled), srv.SavePath, srv.ConfigPath, srv.InstallPath, srv.AgentURL, agentEnc, srv.ContainerName)
 	if err != nil {
 		return 0, err
 	}
@@ -249,7 +256,7 @@ func (s *Store) UpdateServer(ctx context.Context, srv *Server) error {
 		    agent_url = ?, agent_token_enc = ?, container_name = ?
 		WHERE id = ?`,
 		srv.Name, srv.Host, srv.RCONPort, rconEnc, srv.RESTPort, restEnc,
-		normalizeGamePort(srv.GamePort), strings.TrimSpace(srv.JoinAddress), boolToInt(srv.UseREST), boolToInt(srv.Enabled), srv.SavePath, srv.ConfigPath, srv.InstallPath,
+		normalizeGamePort(srv.Game, srv.GamePort), strings.TrimSpace(srv.JoinAddress), boolToInt(srv.UseREST), boolToInt(srv.Enabled), srv.SavePath, srv.ConfigPath, srv.InstallPath,
 		srv.AgentURL, agentEnc, srv.ContainerName, srv.ID)
 	return err
 }
@@ -321,11 +328,23 @@ func (s *Store) DeleteServer(ctx context.Context, id int64) error {
 
 // normalizeGamePort keeps a zero from an old client meaning "default"
 // rather than storing an unjoinable port.
-func normalizeGamePort(p int) int {
-	if p < 1 || p > 65535 {
-		return 8211
+func normalizeGamePort(gameID string, p int) int {
+	if p >= 1 && p <= 65535 {
+		return p
 	}
-	return p
+	if def, ok := game.Get(gameID); ok && def.DefaultGamePort > 0 {
+		return def.DefaultGamePort
+	}
+	return 8211
+}
+
+// normalizeGame keeps an empty game from a pre-multi-game client meaning
+// "no game" rather than the default.
+func normalizeGame(id string) string {
+	if id == "" {
+		return game.DefaultID
+	}
+	return id
 }
 
 func boolToInt(b bool) int {

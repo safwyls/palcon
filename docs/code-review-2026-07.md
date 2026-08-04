@@ -7,6 +7,14 @@ finding can be handed to a separate agent as a self-contained task.
 Supersedes [code-review.md](code-review.md) (the v0.1 scaffold review — it
 references files that no longer exist; kept for history).
 
+> **Paths have moved since this was written.** The game-specific packages were
+> split out from the shared core: `internal/palworld` → `internal/games/palworld`,
+> `internal/palsave` → `internal/games/palworld/palsave`, `internal/palconfig` →
+> `internal/games/palworld/palconfig`, `internal/steamops` → `internal/steamcmd`,
+> and the RCON wire protocol moved to `internal/rcon`. The findings still stand;
+> the links point at the old layout. See
+> [porting-to-another-game.md](porting-to-another-game.md).
+
 ## How to use this doc for delegation
 
 Each finding has a **task ID** (`T1`, `T2`, …), a **priority**, the **files

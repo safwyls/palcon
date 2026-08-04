@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
-import { api, errorDetail, FEATURES, STREAMS, type Feature, type Stream } from "../lib/api";
+import { api, errorDetail, STREAMS, type Feature, type Stream } from "../lib/api";
 import { initials, playerColor } from "../lib/palette";
-import { FEATURE_BLURBS, FEATURE_LABELS } from "../lib/visibility";
+import { featureBlurb, featureLabel } from "../lib/games";
 import { cn } from "../lib/utils";
 
 /** What each per-player switch withholds. Written from the player's side —
@@ -76,6 +76,10 @@ export function VisibilityPanel({ serverId }: { serverId: number }) {
     queryKey: ["server-visibility", serverId],
     queryFn: () => api.serverVisibility(serverId),
   });
+  // For the per-game labels below. The switch list itself comes from the
+  // visibility payload's allFeatures, which is this server's game's views.
+  const serverQuery = useQuery({ queryKey: ["server", serverId], queryFn: () => api.getServer(serverId) });
+  const server = serverQuery.data;
 
   // Edited locally and saved as a whole, like the settings editor beside it:
   // flipping six switches shouldn't be six round trips.
@@ -164,15 +168,16 @@ export function VisibilityPanel({ serverId }: { serverId: number }) {
       </div>
 
       <div className="divide-y divide-ink/10">
-        {FEATURES.map((feature) => {
+        {(query.data?.allFeatures ?? []).map((feature) => {
           const visible = !hiddenFeatures.includes(feature);
+          const label = featureLabel(server, feature as Feature);
           return (
             <div key={feature} className="flex items-center justify-between gap-4 px-5 py-3">
               <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">{FEATURE_LABELS[feature]}</p>
-                <p className="text-xs text-ink/40">{FEATURE_BLURBS[feature]}</p>
+                <p className="text-sm font-medium text-foreground">{label}</p>
+                <p className="text-xs text-ink/40">{featureBlurb(server, feature as Feature)}</p>
               </div>
-              <Toggle on={visible} onChange={(next) => setFeature(feature, next)} label={FEATURE_LABELS[feature]} />
+              <Toggle on={visible} onChange={(next) => setFeature(feature as Feature, next)} label={label} />
             </div>
           );
         })}

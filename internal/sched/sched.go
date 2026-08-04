@@ -18,7 +18,6 @@ import (
 
 	"github.com/safwyls/palcon/internal/dockerctl"
 	"github.com/safwyls/palcon/internal/notify"
-	"github.com/safwyls/palcon/internal/palworld"
 	"github.com/safwyls/palcon/internal/store"
 )
 
@@ -181,17 +180,6 @@ func (s *Scheduler) sweep(ctx context.Context, now time.Time) {
 	}
 }
 
-func clientFor(srv *store.Server) palworld.Client {
-	return palworld.New(palworld.Config{
-		Host:         srv.Host,
-		RESTPort:     srv.RESTPort,
-		RESTPassword: srv.RESTPassword,
-		RCONPort:     srv.RCONPort,
-		RCONPassword: srv.RCONPassword,
-		PreferREST:   srv.UseREST,
-	})
-}
-
 func (s *Scheduler) warn(ctx context.Context, srv *store.Server, minutes int) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -201,7 +189,12 @@ func (s *Scheduler) warn(ctx context.Context, srv *store.Server, minutes int) {
 		unit = "minute"
 	}
 	msg := fmt.Sprintf("Server restart in %d %s", minutes, unit)
-	if err := clientFor(srv).Broadcast(ctx, msg); err != nil {
+	client, err := srv.Client()
+	if err != nil {
+		s.logger.Info("scheduler: cannot warn", "server", srv.ID, "error", err)
+		return
+	}
+	if err := client.Broadcast(ctx, msg); err != nil {
 		// An unreachable server can't be warned — and doesn't need to be.
 		s.logger.Info("scheduler: warning broadcast failed", "server", srv.ID, "minutes", minutes, "error", err)
 	} else {
@@ -221,12 +214,19 @@ func (s *Scheduler) restart(ctx context.Context, srv *store.Server, sc *store.Re
 	s.notifier.RestartingNow(ctx, srv)
 	s.logger.Info("scheduler: restarting server", "server", srv.ID, "name", srv.Name, "schedule", sc.ID)
 
-	client := clientFor(srv)
-	stepCtx, stepCancel := context.WithTimeout(ctx, 25*time.Second)
-	if err := client.Save(stepCtx); err != nil {
-		s.logger.Warn("scheduler: save before restart failed; restarting anyway", "server", srv.ID, "error", err)
+	// A client failure here is a row naming an unknown game, not an
+	// unreachable server: skip the in-game steps and let the container
+	// restart below still happen.
+	client, clientErr := srv.Client()
+	if clientErr != nil {
+		s.logger.Warn("scheduler: no game client; restarting container only", "server", srv.ID, "error", clientErr)
+	} else {
+		stepCtx, stepCancel := context.WithTimeout(ctx, 25*time.Second)
+		if err := client.Save(stepCtx); err != nil {
+			s.logger.Warn("scheduler: save before restart failed; restarting anyway", "server", srv.ID, "error", err)
+		}
+		stepCancel()
 	}
-	stepCancel()
 
 	useDocker := s.docker != nil && srv.ContainerName != ""
 	// With docker control the game just needs to exit cleanly before the
@@ -238,11 +238,13 @@ func (s *Scheduler) restart(ctx context.Context, srv *store.Server, sc *store.Re
 	if useDocker {
 		wait = 1
 	}
-	stepCtx, stepCancel = context.WithTimeout(ctx, 25*time.Second)
-	if err := client.Shutdown(stepCtx, wait, "Server restarting"); err != nil {
-		s.logger.Warn("scheduler: in-game shutdown failed", "server", srv.ID, "error", err)
+	if clientErr == nil {
+		stepCtx, stepCancel := context.WithTimeout(ctx, 25*time.Second)
+		if err := client.Shutdown(stepCtx, wait, "Server restarting"); err != nil {
+			s.logger.Warn("scheduler: in-game shutdown failed", "server", srv.ID, "error", err)
+		}
+		stepCancel()
 	}
-	stepCancel()
 
 	if useDocker {
 		if err := s.docker.Restart(ctx, srv.ContainerName); err != nil {

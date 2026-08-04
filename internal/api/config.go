@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/safwyls/palcon/internal/agentfiles"
-	"github.com/safwyls/palcon/internal/palconfig"
+	"github.com/safwyls/palcon/internal/games/palworld/palconfig"
 	"github.com/safwyls/palcon/internal/store"
 )
 

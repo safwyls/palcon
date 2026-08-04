@@ -19,7 +19,7 @@ type PlayerEvent struct {
 }
 
 // InsertPlayerEvent records one observed transition. playerUID is the in-game
-// uid in the dashed form save files use (palworld.CanonicalUID), and may be
+// uid in the dashed form save files use (see Server.CanonicalUID), and may be
 // empty — sessions closed on behalf of a previous run only know who the
 // events table remembered.
 func (s *Store) InsertPlayerEvent(ctx context.Context, serverID int64, at time.Time, userID, playerUID, name, event string) error {
