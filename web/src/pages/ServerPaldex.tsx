@@ -153,11 +153,24 @@ function CompletionRow({ player }: { player: PlayerPals }) {
   const caughtVariants = useMemo(() => VARIANT_ENTRIES.filter((e) => caught.has(e.label)).length, [caught]);
   const total = BASE_ENTRIES.length;
   const pct = completionPct(caughtBase, total);
-  const missingBase = useMemo(() => BASE_ENTRIES.filter((e) => !caught.has(e.label)), [caught]);
-  const missingVariants = useMemo(() => VARIANT_ENTRIES.filter((e) => !caught.has(e.label)), [caught]);
-  const ownedUnregistered = useMemo(
-    () => [...missingBase, ...missingVariants].filter((e) => owned.has(e.label)).length,
-    [missingBase, missingVariants, owned],
+  // A species sitting in the box isn't missing in any useful sense — the
+  // player has one, they just have nothing to go and find. So ownership pulls
+  // an entry out of the missing lists and into its own group below, rather
+  // than leaving it among the species they still have to hunt down. Some
+  // entries can only ever land here: a few Paldeck slots are spawn variants
+  // the save never writes into the dex record, so owning one is the only
+  // evidence there is.
+  const missingBase = useMemo(
+    () => BASE_ENTRIES.filter((e) => !caught.has(e.label) && !owned.has(e.label)),
+    [caught, owned],
+  );
+  const missingVariants = useMemo(
+    () => VARIANT_ENTRIES.filter((e) => !caught.has(e.label) && !owned.has(e.label)),
+    [caught, owned],
+  );
+  const unregistered = useMemo(
+    () => [...BASE_ENTRIES, ...VARIANT_ENTRIES].filter((e) => !caught.has(e.label) && owned.has(e.label)),
+    [caught, owned],
   );
 
   // Registered species with no sphere capture behind them: hatched, traded or
@@ -213,16 +226,26 @@ function CompletionRow({ player }: { player: PlayerPals }) {
 
       {open && !noRecord && (
         <div className="space-y-3 border-t border-ink/5 bg-ink/[0.015] px-5 py-4">
-          {missingBase.length === 0 && missingVariants.length === 0 ? (
+          {missingBase.length === 0 && missingVariants.length === 0 && unregistered.length === 0 ? (
             <p className="text-sm text-ink/60">Paldex complete — every species and variant is registered. 🎉</p>
           ) : (
             <>
-              {ownedUnregistered > 0 && (
-                <p className="text-xs text-ink/50">
-                  <span className="font-semibold text-brand-amber">{ownedUnregistered}</span> of these are in their
-                  box but unregistered — the dex only counts pals a player acquired themselves, so traded-in pals
-                  don't register.
-                </p>
+              {unregistered.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink/35">
+                    In their box, unregistered · {unregistered.length}
+                  </p>
+                  <p className="mb-2 text-xs text-ink/45">
+                    They have one, so it isn't missing — it just never wrote the dex. The dex only counts pals a
+                    player acquired themselves, so traded-in pals don't register, and a few Paldeck slots are spawn
+                    variants the save never records at all.
+                  </p>
+                  <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+                    {unregistered.map((e) => (
+                      <DexChip key={e.label} entry={e} owned ownedText="in box" />
+                    ))}
+                  </div>
+                </div>
               )}
               {missingBase.length > 0 && (
                 <div>
@@ -230,8 +253,10 @@ function CompletionRow({ player }: { player: PlayerPals }) {
                     Missing · {missingBase.length}
                   </p>
                   <div className="flex max-h-64 flex-wrap gap-1.5 overflow-y-auto">
+                    {/* Owned entries were filtered out above, so nothing here
+                        is in a box — these are genuinely still to be found. */}
                     {missingBase.map((e) => (
-                      <DexChip key={e.label} entry={e} owned={owned.has(e.label)} />
+                      <DexChip key={e.label} entry={e} owned={false} />
                     ))}
                   </div>
                 </div>
@@ -244,7 +269,7 @@ function CompletionRow({ player }: { player: PlayerPals }) {
                   </p>
                   <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
                     {missingVariants.map((e) => (
-                      <DexChip key={e.label} entry={e} owned={owned.has(e.label)} />
+                      <DexChip key={e.label} entry={e} owned={false} />
                     ))}
                   </div>
                 </div>

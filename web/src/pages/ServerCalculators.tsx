@@ -6,7 +6,15 @@ import { api, ApiError } from "../lib/api";
 import { palEntry, palName, passiveName, passiveTier, elementColor } from "../lib/paldex";
 import { breedChild, parentPairsFor, isBreedable } from "../lib/breeding";
 import { eggsForConfidence, expectedEggs, passiveOdds } from "../lib/inheritance";
-import { planRoutes, type BreedStep, type StepParent } from "../lib/breeding-path";
+import {
+  HELD_PASSIVES,
+  planRoutes,
+  rankRoutes,
+  type BreedStep,
+  type RankMode,
+  type RouteOption,
+  type StepParent,
+} from "../lib/breeding-path";
 import { computeStats, talentRating, hasCombatStats, passiveStatEffect, friendshipRank, talentTone } from "../lib/stats";
 import { cn } from "../lib/utils";
 import { PalPortrait } from "../components/PalPortrait";
@@ -510,10 +518,20 @@ function Egg({ className = "h-14 w-10" }: { className?: string }) {
 // Breeding path
 // ---------------------------------------------------------------------------
 
+/** How many routes each egg-count column offers. */
+const ROUTES_PER_BUCKET = 5;
+
+const RANK_LABELS: [RankMode, string][] = [
+  ["balanced", "Balanced"],
+  ["talents", "Talents"],
+  ["passives", "Passives"],
+];
+
 function PathFinder({ savePals, saveStatus }: { savePals?: SavePal[]; saveStatus?: string }) {
   const [targetId, setTargetId] = useState<string | null>(null);
   const [scope, setScope] = useState("all");
-  const [routeIdx, setRouteIdx] = useState(0);
+  const [rank, setRank] = useState<RankMode>("balanced");
+  const [routeId, setRouteId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   // A suggested parent, opened in the same detail dialog the pal viewer uses.
   const [detail, setDetail] = useState<SavePal | null>(null);
@@ -537,9 +555,22 @@ function PathFinder({ savePals, saveStatus }: { savePals?: SavePal[]; saveStatus
     () => (targetId && pool && pool.length > 0 ? planRoutes(pool, targetId) : null),
     [pool, targetId],
   );
-  const options = plan?.status === "ok" ? plan.options : [];
-  const route = options.length > 0 ? options[Math.min(routeIdx, options.length - 1)] : undefined;
+  // Re-ranking is a sort over routes the planner already found, so switching
+  // how the board is ordered never costs another solve.
+  const board = useMemo(
+    () =>
+      plan?.status === "ok"
+        ? plan.buckets.map((b) => ({ eggs: b.eggs, routes: rankRoutes(b.routes, rank, ROUTES_PER_BUCKET) }))
+        : [],
+    [plan, rank],
+  );
+  const shown = board.flatMap((b) => b.routes);
+  // A route the board no longer offers (the ranking changed under it) falls
+  // back to the new best, so the step list below always matches a lit row.
+  const route = shown.find((r) => r.id === routeId) ?? shown[0];
+  const owned = plan?.status === "ok" ? plan.owned : undefined;
   const poolName = scope === "all" ? "the server" : (players.find((p) => p.uid === scope)?.name ?? "this player");
+  const poolPossessive = poolName === "the server" ? "the server's" : `${poolName}'s`;
 
   return (
     <div className="space-y-6">
@@ -556,7 +587,7 @@ function PathFinder({ savePals, saveStatus }: { savePals?: SavePal[]; saveStatus
                 value={scope}
                 onChange={(e) => {
                   setScope(e.target.value);
-                  setRouteIdx(0);
+                  setRouteId(null);
                 }}
               >
                 <option value="all">Everyone · {savePals?.length ?? 0}</option>
@@ -597,82 +628,107 @@ function PathFinder({ savePals, saveStatus }: { savePals?: SavePal[]; saveStatus
           )}
         </div>
 
-        {options.length > 0 && (
-          <div className="mt-4">
-            <div className="flex flex-wrap gap-2">
-              {options.map((opt, i) => {
-                const active = opt === route;
-                return (
-                  <button
-                    key={i}
-                    onClick={() => setRouteIdx(i)}
-                    className={cn(
-                      "flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-semibold transition-colors",
-                      active
-                        ? "border-brand-red bg-brand-red text-paper"
-                        : "border-ink/15 bg-white text-ink/70 hover:border-brand-red/40",
-                    )}
-                  >
-                    <span>
-                      {opt.eggs === 0
-                        ? "In the box"
-                        : `${opt.noReverserAlternative ? "No Reverser · " : ""}${opt.eggs} ${opt.eggs === 1 ? "egg" : "eggs"}`}
-                    </span>
-                    {opt.reversers > 0 && (
-                      <span
-                        title={`Needs ${opt.reversers} Pal Reverser${opt.reversers === 1 ? "" : "s"}`}
-                        className={active ? "text-paper/80" : "text-brand-amber"}
-                      >
-                        ⚥
-                      </span>
-                    )}
-                    {active ? (
-                      <span className="font-mono text-[11px] text-paper/80">{opt.ceiling.join("/")}</span>
-                    ) : (
-                      <TalentTriplet
-                        hp={opt.ceiling[0]}
-                        attack={opt.ceiling[1]}
-                        defense={opt.ceiling[2]}
-                        className="font-mono text-[11px] text-ink/40"
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            {options.length > 1 && (
-              <p className="mt-1.5 text-[11px] text-ink/35">
-                Longer routes are only offered when they raise the talent ceiling (HP/Attack/Defense).
-              </p>
-            )}
-          </div>
-        )}
       </section>
+
+      {owned?.ownedTarget && (
+        <section className="rounded-2xl border border-ink/10 bg-white/70 p-4 lg:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+            <div>
+              <p className="font-display text-base font-bold">Already in the box</p>
+              <p className="text-xs text-ink/40">
+                {board.length > 0
+                  ? "The best copy on the server today — breed only to beat it."
+                  : `Nothing in ${poolPossessive} pals breeds into it, so this is the one.`}
+              </p>
+            </div>
+            <div className="max-w-full">
+              <ParentRow parent={{ kind: "owned", pal: owned.ownedTarget }} onOpen={setDetail} />
+            </div>
+          </div>
+        </section>
+      )}
+
+      {board.length > 0 && (
+        <section className="rounded-2xl border border-ink/10 bg-white/70 p-4 lg:p-6">
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+            <div>
+              <h2 className="font-display text-base font-bold">Best routes</h2>
+              <p className="text-xs text-ink/40">
+                What each extra egg buys you. Pick one to see the breeding order.
+              </p>
+            </div>
+            <div className="flex items-baseline gap-1 text-xs">
+              <span className="mr-1 text-ink/40">Rank by</span>
+              {RANK_LABELS.map(([mode, label]) => (
+                <button
+                  key={mode}
+                  onClick={() => setRank(mode)}
+                  aria-pressed={rank === mode}
+                  className={cn(
+                    "rounded px-1.5 py-0.5 font-semibold transition-colors",
+                    rank === mode
+                      ? "text-brand-red underline decoration-2 underline-offset-4"
+                      : "text-ink/45 hover:text-ink",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {board.map((bucket) => (
+              <div key={bucket.eggs} className="min-w-0">
+                <div className="mb-2 flex items-center gap-2 border-b border-ink/10 pb-2">
+                  <EggCount n={bucket.eggs} />
+                  <p className="font-display text-base font-bold first-letter:uppercase">
+                    {eggCountLabel(bucket.eggs)}
+                  </p>
+                </div>
+                <ol className="space-y-1.5">
+                  {bucket.routes.map((opt, i) => (
+                    <li key={opt.id}>
+                      <RouteRow
+                        route={opt}
+                        place={i + 1}
+                        selected={opt.id === route?.id}
+                        onSelect={() => setRouteId(opt.id)}
+                      />
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] text-ink/35">
+            Both readouts are ceilings: the talents assume every stat lands from the better parent, and the
+            passives are what the route can reach — a pal holds four at once, drawn from its parents' pool.
+          </p>
+        </section>
+      )}
 
       {!savePals || savePals.length === 0 ? (
         <PathNote>{saveStatus ?? "No pals in the save yet."}</PathNote>
       ) : !targetId ? (
-        <PathNote>Pick a target to plan a route from {poolName === "the server" ? "the server's" : `${poolName}'s`} pals.</PathNote>
+        <PathNote>Pick a target to plan a route from {poolPossessive} pals.</PathNote>
       ) : plan?.status === "notBreedable" ? (
         <PathNote>{palName(targetId)} can't be bred — catch one in the wild instead.</PathNote>
       ) : plan?.status === "unreachable" ? (
         <PathNote>
-          Nothing in {poolName === "the server" ? "the server's" : `${poolName}'s`} pals breeds into{" "}
-          {palName(targetId)}.{" "}
+          Nothing in {poolPossessive} pals breeds into {palName(targetId)}.{" "}
           {scope !== "all" && players.length > 1
             ? "Try breeding from everyone's pals instead."
             : "Catch one — or a species closer to it — in the wild first."}
         </PathNote>
-      ) : route?.ownedTarget ? (
-        <section className="rounded-2xl border border-ink/10 bg-white/70 p-5">
-          <p className="font-display text-base font-bold">Already on the server</p>
-          <p className="text-xs text-ink/40">No breeding needed — this is the best copy in the box.</p>
-          <div className="mt-3 max-w-xs">
-            <ParentRow parent={{ kind: "owned", pal: route.ownedTarget }} onOpen={setDetail} />
-          </div>
-        </section>
       ) : route ? (
         <section>
+          <div className="mb-3 flex items-baseline gap-2">
+            <h2 className="font-display text-base font-bold">Breed order</h2>
+            <p className="text-xs text-ink/40">
+              {eggCountLabel(route.eggs)}, in order — later steps can reuse anything already hatched.
+            </p>
+          </div>
           <div>
             {route.steps.map((step, i) => (
               <div key={step.n} className="flex gap-3">
@@ -687,9 +743,8 @@ function PathFinder({ savePals, saveStatus }: { savePals?: SavePal[]; saveStatus
             ))}
           </div>
           <p className="mt-1 text-[11px] text-ink/35">
-            Ceilings assume best-case talent inheritance — each stat from the better parent. A hatched pal's
-            gender is random, so a pair with an egg parent may still need a re-hatch or a Pal Reverser; a
-            hatched pal can be reused in later steps.
+            A hatched pal's gender is random, so a pair with an egg parent may still need a re-hatch or a Pal
+            Reverser; a hatched pal can be reused in later steps.
           </p>
         </section>
       ) : null}
@@ -699,7 +754,7 @@ function PathFinder({ savePals, saveStatus }: { savePals?: SavePal[]; saveStatus
         onOpenChange={setPickerOpen}
         onPick={(pick) => {
           setTargetId(pick.characterId);
-          setRouteIdx(0);
+          setRouteId(null);
         }}
         title="Choose a target pal"
       />
@@ -717,6 +772,123 @@ function PathNote({ children }: { children: React.ReactNode }) {
     <section className="rounded-2xl border border-ink/10 bg-white/70 p-5 text-sm text-muted-foreground">
       {children}
     </section>
+  );
+}
+
+const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight"];
+
+/** "two eggs" reads as a cost; "2" reads as a label. Falls back to digits past
+ * the point where spelling it out stops helping. */
+function eggCountLabel(n: number): string {
+  return `${NUMBER_WORDS[n] ?? n} ${n === 1 ? "egg" : "eggs"}`;
+}
+
+/** A column's price tag: the page's own egg, once per egg the route costs.
+ * Overlapped like a clutch so three still read at a glance. */
+function EggCount({ n }: { n: number }) {
+  return (
+    <span className="flex shrink-0 items-center" aria-hidden="true">
+      {Array.from({ length: Math.min(n, 8) }, (_, i) => (
+        <Egg key={i} className={cn("h-6 w-[17px]", i > 0 && "-ml-1.5")} />
+      ))}
+    </span>
+  );
+}
+
+/**
+ * One route in an egg-count column. The two ceilings are the comparison — read
+ * a row across, or read row 1 across three columns to see what another egg
+ * buys. The pals it pulls out of the box distinguish otherwise-identical rows.
+ */
+function RouteRow({
+  route,
+  place,
+  selected,
+  onSelect,
+}: {
+  route: RouteOption<SavePal>;
+  place: number;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  // The owned pals this route consumes, deduped — a hatched pal can parent
+  // more than one later step, but you only need one copy out of the box.
+  const leaves: SavePal[] = [];
+  const seen = new Set<string>();
+  for (const step of route.steps) {
+    for (const parent of [step.a, step.b]) {
+      if (parent.kind !== "owned" || seen.has(parent.pal.key)) continue;
+      seen.add(parent.pal.key);
+      leaves.push(parent.pal);
+    }
+  }
+  const held = route.passives.slice(0, HELD_PASSIVES);
+  const extra = route.passives.length - held.length;
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={cn(
+        "w-full rounded-xl border px-2.5 py-2 text-left transition-colors",
+        selected
+          ? "border-brand-red bg-brand-red/[0.06]"
+          : "border-ink/10 bg-white/60 hover:border-brand-red/40 hover:bg-white",
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <span className="w-3 shrink-0 font-mono text-[11px] tabular-nums text-ink/30">{place}</span>
+        <span className="flex shrink-0 items-center gap-0.5">
+          {leaves.slice(0, 3).map((pal) => (
+            <PalPortrait key={pal.key} characterId={pal.characterId} size="sm" />
+          ))}
+          {leaves.length > 3 && (
+            // Sized and framed like a portrait so it reads as "one more pal",
+            // not as the passive overflow count on the line below.
+            <span
+              className="flex h-11 w-11 items-center justify-center rounded-lg border border-dashed border-ink/20 font-mono text-[11px] text-ink/40"
+              title={`${leaves.length} pals out of the box`}
+            >
+              +{leaves.length - 3}
+            </span>
+          )}
+        </span>
+        <TalentTriplet
+          hp={route.ceiling[0]}
+          attack={route.ceiling[1]}
+          defense={route.ceiling[2]}
+          className="ml-auto font-mono text-xs font-semibold tabular-nums"
+        />
+        {route.reversers > 0 && (
+          <span
+            className="shrink-0 text-brand-amber"
+            title={`Needs ${route.reversers} Pal Reverser${route.reversers === 1 ? "" : "s"}`}
+          >
+            ⚥
+          </span>
+        )}
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-1 pl-5">
+        {held.length > 0 ? (
+          <>
+            {held.map((code) => (
+              <PassiveBadge key={code} code={code} />
+            ))}
+            {extra > 0 && (
+              <span
+                className="font-mono text-[10px] text-ink/35"
+                title={`${route.passives.length} passives in this route's pool — the child draws four of them`}
+              >
+                +{extra}
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="text-[10px] text-ink/30">No passives on this line</span>
+        )}
+      </div>
+    </button>
   );
 }
 
