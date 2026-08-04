@@ -125,7 +125,8 @@ func TestProvisionOneClickDeploy(t *testing.T) {
 		DataDir  string `json:"dataDir"`
 		Stack    string `json:"stack"`
 		Server   struct {
-			GamePort int `json:"gamePort"`
+			GamePort      int    `json:"gamePort"`
+			ContainerName string `json:"containerName"`
 		} `json:"server"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
@@ -143,6 +144,170 @@ func TestProvisionOneClickDeploy(t *testing.T) {
 	joined := strings.Join(dockerCalls, " ")
 	if !strings.Contains(joined, "/containers/create") || !strings.Contains(joined, "/start") {
 		t.Errorf("docker never created/started: %v", dockerCalls)
+	}
+	// The row records the container the provisioner made — without it the
+	// destroy path has no name to pass back, and the logs viewer and
+	// watchdog stay dark for the one server palcon knows the name of.
+	if res.Server.ContainerName != "palagent-one-click" {
+		t.Errorf("containerName = %q, want palagent-one-click", res.Server.ContainerName)
+	}
+}
+
+// Deleting a server destroys its container only when asked, and only
+// through the provisioner that created it. The data directory survives
+// and is reported back, since removing a container is not consent to
+// delete a world.
+func TestDeleteServerDestroysContainerWhenAsked(t *testing.T) {
+	app, admin := newTestAppWithAdmin(t)
+
+	var dockerCalls []string
+	dockerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dockerCalls = append(dockerCalls, r.Method+" "+r.URL.Path)
+		if r.URL.Path == "/containers/json" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`[{"Id":"cafe","Names":["/palagent-doomed"],"Image":"ghcr.io/safwyls/palagent:latest",
+			  "State":"running","Labels":{"palcon.provisioned":"true","palcon.slug":"doomed"},"Ports":[]}]`))
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(dockerSrv.Close)
+
+	dataRoot := t.TempDir()
+	provAgent, err := palagent.New(palagent.Config{
+		Token: agentToken, InstallDir: t.TempDir(), Version: "test",
+		Mode: "provisioner", DockerHost: dockerSrv.URL, DataRoot: dataRoot,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provSrv := httptest.NewServer(provAgent.Handler())
+	t.Cleanup(provSrv.Close)
+	if app.api.Provisioner, err = agentctl.New(provSrv.URL, agentToken); err != nil {
+		t.Fatal(err)
+	}
+
+	newServer := func(t *testing.T, container string) string {
+		t.Helper()
+		rec := app.do(t, "POST", "/api/servers", map[string]any{
+			"name": "Doomed", "host": "10.0.0.9", "rconPort": 25575, "restPort": 8212,
+			"useRest": true, "enabled": true, "containerName": container,
+		}, admin)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create server: %d (body %s)", rec.Code, rec.Body)
+		}
+		var created struct {
+			ID int64 `json:"id"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatal(err)
+		}
+		return itoa(created.ID)
+	}
+
+	// Without the flag nothing on the host is touched — the long-standing
+	// promise that removing a server only removes the row.
+	id := newServer(t, "palagent-doomed")
+	if rec := app.do(t, "DELETE", "/api/servers/"+id, nil, admin); rec.Code != http.StatusNoContent {
+		t.Fatalf("plain delete: %d (body %s)", rec.Code, rec.Body)
+	}
+	if len(dockerCalls) != 0 {
+		t.Errorf("a plain delete reached docker: %v", dockerCalls)
+	}
+
+	// With it, the container is stopped and removed, and the world's
+	// directory comes back so the operator knows what survived.
+	id = newServer(t, "palagent-doomed")
+	rec := app.do(t, "DELETE", "/api/servers/"+id+"?removeContainer=true", nil, admin)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("destroying delete: %d (body %s)", rec.Code, rec.Body)
+	}
+	var res struct {
+		Destroyed string `json:"destroyed"`
+		DataDir   string `json:"dataDir"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Destroyed != "palagent-doomed" || res.DataDir != filepath.Join(dataRoot, "doomed") {
+		t.Errorf("result = %+v", res)
+	}
+	if joined := strings.Join(dockerCalls, " | "); !strings.Contains(joined, "DELETE /containers/cafe") {
+		t.Errorf("container never removed: %s", joined)
+	}
+	if rec := app.do(t, "GET", "/api/servers/"+id, nil, admin); rec.Code != http.StatusNotFound {
+		t.Errorf("row survived the destroy: %d", rec.Code)
+	}
+}
+
+// A destroy the provisioner refuses must leave the row alone: the
+// operator still needs the card (and its credentials) to deal with the
+// container by hand.
+func TestDeleteServerKeepsRowWhenDestroyRefused(t *testing.T) {
+	app, admin := newTestAppWithAdmin(t)
+
+	// A palagent container with no palcon.provisioned label — deployed by
+	// hand, so the provisioner won't unmake it.
+	dockerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/containers/json" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`[{"Id":"c1","Names":["/palagent-byhand"],"Image":"ghcr.io/safwyls/palagent:latest",
+			  "State":"running","Labels":{},"Ports":[]}]`))
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(dockerSrv.Close)
+
+	provAgent, err := palagent.New(palagent.Config{
+		Token: agentToken, InstallDir: t.TempDir(), Version: "test",
+		Mode: "provisioner", DockerHost: dockerSrv.URL, DataRoot: t.TempDir(),
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provSrv := httptest.NewServer(provAgent.Handler())
+	t.Cleanup(provSrv.Close)
+	if app.api.Provisioner, err = agentctl.New(provSrv.URL, agentToken); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := app.do(t, "POST", "/api/servers", map[string]any{
+		"name": "By Hand", "host": "10.0.0.9", "rconPort": 25575, "restPort": 8212,
+		"useRest": true, "enabled": true, "containerName": "palagent-byhand",
+	}, admin)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create server: %d (body %s)", rec.Code, rec.Body)
+	}
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	id := itoa(created.ID)
+
+	if rec := app.do(t, "DELETE", "/api/servers/"+id+"?removeContainer=true", nil, admin); rec.Code != http.StatusBadRequest {
+		t.Fatalf("refused destroy: %d (body %s), want 400", rec.Code, rec.Body)
+	}
+	if rec := app.do(t, "GET", "/api/servers/"+id, nil, admin); rec.Code != http.StatusOK {
+		t.Errorf("row deleted despite the refused destroy: %d", rec.Code)
+	}
+}
+
+// Asking to destroy with no provisioner configured is refused before the
+// row goes, rather than silently degrading to a plain delete.
+func TestDeleteServerRefusesDestroyWithoutProvisioner(t *testing.T) {
+	app, admin := newTestAppWithAdmin(t)
+	id := itoa(createTestServer(t, app))
+
+	if rec := app.do(t, "DELETE", "/api/servers/"+id+"?removeContainer=true", nil, admin); rec.Code != http.StatusBadRequest {
+		t.Fatalf("destroy without a provisioner: %d (body %s), want 400", rec.Code, rec.Body)
+	}
+	if rec := app.do(t, "GET", "/api/servers/"+id, nil, admin); rec.Code != http.StatusOK {
+		t.Errorf("row deleted anyway: %d", rec.Code)
 	}
 }
 

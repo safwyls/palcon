@@ -253,6 +253,12 @@ services:
 		UseREST:  true, Enabled: true,
 		AgentURL:   fmt.Sprintf("http://%s:%d", req.Host, req.AgentPort),
 		AgentToken: token,
+		// Recorded only when the provisioner actually made it: this is the
+		// name the destroy path passes back, and — when palcon's own docker
+		// proxy happens to watch the same daemon — what the container logs
+		// viewer and watchdog key off. Power control is unaffected either
+		// way, since every power site tries agentSupervisor before docker.
+		ContainerName: container,
 	}
 	id, err := s.store.CreateServer(r.Context(), srv)
 	if err != nil {
@@ -482,8 +488,9 @@ func (s *Server) handleAdoptServer(w http.ResponseWriter, r *http.Request) {
 		RESTPort: adopted.RESTPort, RESTPassword: adopted.AdminPassword,
 		GamePort: adopted.GamePort,
 		UseREST:  true, Enabled: true,
-		AgentURL:   fmt.Sprintf("http://%s:%d", host, adopted.AgentPort),
-		AgentToken: adopted.Token,
+		AgentURL:      fmt.Sprintf("http://%s:%d", host, adopted.AgentPort),
+		AgentToken:    adopted.Token,
+		ContainerName: adopted.Name,
 	}
 	id, err := s.store.CreateServer(r.Context(), srv)
 	if err != nil {

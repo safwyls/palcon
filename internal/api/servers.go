@@ -193,18 +193,52 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toDTO(stored))
 }
 
+// handleDeleteServer drops the server row and, with ?removeContainer=true,
+// asks the provisioner to destroy the container first.
+//
+// The ordering is handleProvisionServer's in reverse, for the same reason:
+// destroy first, delete the row after. A destroy that fails keeps the row,
+// so the operator still has the card and the credentials to retry from.
+// Deleting the row first would leave a live container that palcon can only
+// reach again through adoption — and the container name it needed to
+// destroy it lives on that row.
 func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
-	id, err := serverIDFromRequest(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid server id")
+	srv, ok := s.loadServer(w, r)
+	if !ok {
 		return
 	}
-	if err := s.store.DeleteServer(r.Context(), id); err != nil {
+	destroyed, dataDir := "", ""
+	if r.URL.Query().Get("removeContainer") == "true" {
+		switch {
+		case s.Provisioner == nil:
+			writeError(w, http.StatusBadRequest,
+				"no provisioner is configured — remove the container wherever it was deployed")
+			return
+		case srv.ContainerName == "":
+			writeError(w, http.StatusBadRequest, "no container name is recorded for this server")
+			return
+		}
+		res, err := s.Provisioner.Destroy(r.Context(), srv.ContainerName)
+		if err != nil {
+			s.logger.Error("destroy container failed",
+				"server", srv.Name, "container", srv.ContainerName, "error", err)
+			writeAgentError(w, err)
+			return
+		}
+		destroyed, dataDir = res.Container, res.DataDir
+		s.audit(r, srv.ID, "server-destroy", destroyed)
+		s.logger.Info("destroyed container", "server", srv.Name, "container", destroyed, "dataKept", dataDir)
+	}
+	if err := s.store.DeleteServer(r.Context(), srv.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete server")
 		return
 	}
 	// The audit row outlives the server row (no FK) — the trail of a
 	// deletion shouldn't be deleted by it.
-	s.audit(r, id, "server-delete", "")
-	w.WriteHeader(http.StatusNoContent)
+	s.audit(r, srv.ID, "server-delete", "")
+	if destroyed == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"destroyed": destroyed, "dataDir": dataDir})
 }

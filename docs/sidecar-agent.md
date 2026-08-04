@@ -336,6 +336,24 @@ spinning up a new Palworld server from the dashboard — lands in two steps:
   values, which carry tokens), so the add-server dialog can offer
   existing supervisor installs for adoption with their ports prefilled.
 
+  `/v1/destroy` is create's inverse, and the only verb that unmakes
+  anything. It is gated on the `palcon.provisioned=true` label that
+  `/v1/provision` writes — deliberately narrower than discover/adopt,
+  which also match the palagent image name. A palagent deployed by hand
+  (a TrueNAS app, a pasted stack) carries the image but not the label and
+  is refused, so this verb can only ever unmake what the same provisioner
+  made. It stops the container first, giving the game its grace period to
+  flush the world, and **never removes the volume**: the world lives in a
+  host bind mount under the data root and survives. Removing a server in
+  palcon still defaults to dropping just the row — destroying the
+  container is an explicit opt-in on the remove dialog
+  (`DELETE /servers/{id}?removeContainer=true`), offered only when a
+  provisioner is configured and the row records a container name.
+
+  Data directories are never deleted, by any verb. Reclaiming the disk
+  is a deliberate trip to the host — the one step where a mistake costs
+  a world that no amount of re-provisioning brings back.
+
   ### Understand the risk before deploying the provisioner
 
   **A container holding the docker socket as root IS root on the host** —
@@ -344,14 +362,16 @@ spinning up a new Palworld server from the dashboard — lands in two steps:
   deliberate trade of that exposure for one-click convenience; the paste
   flow delivers identical capability without it. Know the three paths in:
 
-  1. **Its API.** Bounded by design: one locked verb, template in code,
+  1. **Its API.** Bounded by design: locked verbs, template in code,
      token-authenticated. A fully hostile caller with the token can stamp
      out Palworld-supervisor containers from this repo's image — fill a
-     disk, squat free host ports, chown under the data root — and not
-     reach host root. Keep it that way operationally: **never publish the
-     provisioner's port**; reach it over the compose network by service
-     name, so only palcon (and containers beside it) can talk to it at
-     all.
+     disk, squat free host ports, chown under the data root — and can
+     destroy the containers a provisioner created, taking those servers
+     offline until they are re-provisioned. It cannot touch containers it
+     did not create, delete any world data, or reach host root. Keep it
+     that way operationally: **never publish the provisioner's port**;
+     reach it over the compose network by service name, so only palcon
+     (and containers beside it) can talk to it at all.
   2. **Bugs in the provisioner itself.** The verb handler and its docker
      payload builder are the code standing in front of a root socket —
      the one place in this repo where an input-validation slip is

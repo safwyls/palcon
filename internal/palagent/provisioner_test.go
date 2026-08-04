@@ -35,6 +35,7 @@ func (f *fakeDockerAPI) handler() http.Handler {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`[
 			  {"Id":"c1","Names":["/palagent-main"],"Image":"ghcr.io/safwyls/palagent:beta","State":"running",
+			   "Labels":{"palcon.provisioned":"true","palcon.slug":"main"},
 			   "Ports":[{"PrivatePort":8211,"PublicPort":9211,"Type":"udp"},{"PrivatePort":8811,"PublicPort":9811,"Type":"tcp"},{"PrivatePort":8212,"PublicPort":9212,"Type":"tcp"}]},
 			  {"Id":"c2","Names":["/palprovisioner"],"Image":"ghcr.io/safwyls/palagent:beta","State":"running","Ports":[]},
 			  {"Id":"c3","Names":["/nginx"],"Image":"nginx:latest","State":"running","Ports":[]}
@@ -194,6 +195,62 @@ func TestProvisionerAdopt(t *testing.T) {
 	// The provisioner itself is not adoptable.
 	if resp, _ := do(t, srv, "POST", "/v1/adopt", testToken, map[string]string{"container": "palprovisioner"}); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("provisioner adopt: %d, want 400", resp.StatusCode)
+	}
+}
+
+// Destroy stops before removing (so the world is flushed), keeps the
+// volume, and reports where the data still is.
+func TestProvisionerDestroy(t *testing.T) {
+	srv, fake, dataRoot := newProvisioner(t)
+
+	resp, m := do(t, srv, "POST", "/v1/destroy", testToken, map[string]string{"container": "palagent-main"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("destroy: %d %v", resp.StatusCode, m)
+	}
+	if m["container"] != "palagent-main" || m["dataDir"] != filepath.Join(dataRoot, "main") {
+		t.Errorf("destroy result = %v", m)
+	}
+
+	joined := strings.Join(fake.calls, " | ")
+	stop, remove := strings.Index(joined, "POST /containers/c1/stop"), strings.Index(joined, "DELETE /containers/c1")
+	if stop < 0 || remove < 0 {
+		t.Fatalf("want a stop then a remove, got: %s", joined)
+	}
+	if stop > remove {
+		t.Errorf("removed before stopping — the world never got flushed: %s", joined)
+	}
+}
+
+// The label gate, which is the whole security argument for this verb:
+// only containers this provisioner created can be destroyed. A palagent
+// deployed by hand carries the image but not the label, and is refused —
+// including the provisioner itself.
+func TestProvisionerDestroyRefusesUnlabelled(t *testing.T) {
+	srv, fake, _ := newProvisioner(t)
+
+	for _, name := range []string{"palprovisioner", "nginx"} {
+		resp, m := do(t, srv, "POST", "/v1/destroy", testToken, map[string]string{"container": name})
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("destroy %s: %d %v, want 400", name, resp.StatusCode, m)
+		}
+	}
+	if resp, _ := do(t, srv, "POST", "/v1/destroy", testToken, map[string]string{"container": "ghost"}); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("destroy ghost: %d, want 404", resp.StatusCode)
+	}
+	if resp, _ := do(t, srv, "POST", "/v1/destroy", testToken, map[string]string{"container": ""}); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("destroy without a name: %d, want 400", resp.StatusCode)
+	}
+
+	// Nothing was stopped or removed on any refused path.
+	if joined := strings.Join(fake.calls, " | "); strings.Contains(joined, "DELETE /containers") || strings.Contains(joined, "/stop") {
+		t.Errorf("a refused destroy still touched docker: %s", joined)
+	}
+}
+
+func TestNonProvisionerRefusesDestroy(t *testing.T) {
+	srv, _ := newTestAgent(t, "exit 0") // companion
+	if resp, _ := do(t, srv, "POST", "/v1/destroy", testToken, map[string]string{"container": "x"}); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("companion destroy: %d, want 400", resp.StatusCode)
 	}
 }
 

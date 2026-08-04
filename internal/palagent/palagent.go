@@ -234,6 +234,9 @@ func (a *Agent) Handler() http.Handler {
 		r.Post("/provision", a.handleProvision)
 		r.Get("/discover", a.handleDiscover)
 		r.Post("/adopt", a.handleAdopt)
+		// Destroy is create's inverse and is gated on the label create
+		// writes, so it reaches only containers this provisioner made.
+		r.Post("/destroy", a.handleDestroy)
 	})
 	return r
 }

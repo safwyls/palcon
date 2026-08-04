@@ -246,6 +246,12 @@ export interface ProvisionResult {
   dataDir?: string;
 }
 
+/**
+ * Undefined unless the container was destroyed too — a plain row deletion
+ * answers 204 with no body.
+ */
+export type DeleteServerResult = { destroyed: string; dataDir?: string } | undefined;
+
 /** What the wizard can prefill from the provisioner's configuration. */
 export interface ProvisionDefaults {
   available: boolean;
@@ -793,7 +799,13 @@ export const api = {
   createServer: (input: ServerWriteInput) => request<Server>("/servers", { method: "POST", body: JSON.stringify(input) }),
   updateServer: (id: number, input: ServerWriteInput) =>
     request<Server>(`/servers/${id}`, { method: "PUT", body: JSON.stringify(input) }),
-  deleteServer: (id: number) => request<void>(`/servers/${id}`, { method: "DELETE" }),
+  // removeContainer additionally asks the provisioner to destroy the
+  // container — only possible for ones it created, and never touching the
+  // world data, which stays in its host directory.
+  deleteServer: (id: number, removeContainer = false) =>
+    request<DeleteServerResult>(`/servers/${id}${removeContainer ? "?removeContainer=true" : ""}`, {
+      method: "DELETE",
+    }),
 
   serverInfo: (id: number) => request<ServerInfo>(`/servers/${id}/info`),
   serverPlayers: (id: number) => request<Player[]>(`/servers/${id}/players`),

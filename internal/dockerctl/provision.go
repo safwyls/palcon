@@ -145,6 +145,26 @@ func (c *Client) ContainerCreate(ctx context.Context, spec ContainerSpec) (strin
 	return created.ID, nil
 }
 
+// ContainerRemove deletes a container.
+//
+// Volumes are deliberately left alone (v=0): a provisioned server's world
+// lives in a host bind mount under the data root, and unmaking the
+// container is not consent to delete the save. force=0 too — the caller
+// stops the container first so the game gets its grace period to flush
+// the world, rather than the SIGKILL a forced remove would deliver.
+func (c *Client) ContainerRemove(ctx context.Context, id string) error {
+	body, status, err := c.do(ctx, http.MethodDelete,
+		"/containers/"+url.PathEscape(id)+"?v=0&force=0", 60*time.Second)
+	if err != nil {
+		return err
+	}
+	// 404 is the state the caller asked for, reached by someone else.
+	if status == http.StatusNoContent || status == http.StatusNotFound {
+		return nil
+	}
+	return dockerError("container remove", status, body)
+}
+
 // ContainerSummary is the discovery-relevant subset of a container.
 type ContainerSummary struct {
 	ID     string

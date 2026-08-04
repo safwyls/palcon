@@ -334,6 +334,80 @@ func (a *Agent) handleAdopt(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusNotFound, "no container with that name")
 }
 
+// DestroyResult reports what the destroy verb unmade. DataDir comes back
+// so the operator learns where the world still is — destroying a
+// container is not consent to delete a save.
+type DestroyResult struct {
+	Container string `json:"container"`
+	DataDir   string `json:"dataDir,omitempty"`
+}
+
+// handleDestroy removes a container this provisioner created.
+//
+// The label gate is the whole security argument. `palcon.provisioned=true`
+// is written in exactly one place — handleProvision — so destroy can only
+// ever unmake what provision made. That is deliberately narrower than
+// discover/adopt, which also match on the palagent image name: a
+// hand-deployed palagent (a TrueNAS app, a pasted stack) is something the
+// operator manages elsewhere, and this verb must not reach into it. So a
+// leaked provisioner token buys the ability to delete containers that
+// same token's provisioner created, and nothing else on the host.
+//
+// The container's volume is never removed — the world lives in a host
+// bind mount under the data root and outlives the container it was
+// created for.
+func (a *Agent) handleDestroy(w http.ResponseWriter, r *http.Request) {
+	if a.cfg.Mode != "provisioner" {
+		writeError(w, http.StatusBadRequest, "agent is not a provisioner")
+		return
+	}
+	var req struct {
+		Container string `json:"container"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Container) == "" {
+		writeError(w, http.StatusBadRequest, "container name is required")
+		return
+	}
+	name := strings.TrimSpace(req.Container)
+
+	containers, err := a.docker.ContainerList(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	for _, c := range containers {
+		if c.Name != name {
+			continue
+		}
+		if c.Labels["palcon.provisioned"] != "true" {
+			writeError(w, http.StatusBadRequest,
+				"that container was not created by this provisioner — remove it wherever it was deployed")
+			return
+		}
+		// Stop first so the supervisor gets its grace period and the game
+		// flushes the world: the save this leaves behind is the whole
+		// reason the data dir is kept. A stop that fails is not fatal on
+		// its own — docker refuses to remove a running container, and its
+		// 409 says so more usefully than anything invented here.
+		if err := a.docker.Stop(r.Context(), c.ID); err != nil {
+			a.cfg.Logger.Warn("stop before destroy failed; attempting remove anyway",
+				"container", name, "error", err)
+		}
+		if err := a.docker.ContainerRemove(r.Context(), c.ID); err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		dataDir := ""
+		if slug := c.Labels["palcon.slug"]; slug != "" {
+			dataDir = filepath.Join(a.cfg.DataRoot, slug)
+		}
+		a.cfg.Logger.Info("destroyed server", "container", name, "dataKept", dataDir)
+		writeJSON(w, http.StatusOK, DestroyResult{Container: name, DataDir: dataDir})
+		return
+	}
+	writeError(w, http.StatusNotFound, "no container with that name")
+}
+
 // validateProvisionerConfig is called from New for mode=provisioner.
 func validateProvisionerConfig(cfg *Config) (*dockerctl.Client, error) {
 	if cfg.DataRoot == "" {

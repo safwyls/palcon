@@ -79,6 +79,21 @@ func (c *Client) Discover(ctx context.Context) ([]DiscoveredServer, error) {
 	return res.Servers, nil
 }
 
+// DestroyResult mirrors the provisioner's wire type.
+type DestroyResult = palagent.DestroyResult
+
+// Destroy asks the provisioner to remove a container it created. The
+// timeout covers the graceful stop it performs first, which waits out the
+// game's shutdown the same way a docker stop does.
+func (c *Client) Destroy(ctx context.Context, container string) (*DestroyResult, error) {
+	var res DestroyResult
+	if err := c.do(ctx, http.MethodPost, "/v1/destroy",
+		map[string]string{"container": container}, &res, 2*time.Minute); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
 // AdoptResult mirrors the provisioner's wire type.
 type AdoptResult = palagent.AdoptResult
 
