@@ -30,14 +30,23 @@ import (
 type gameSpy struct {
 	mu    sync.Mutex
 	calls []string
+	// bodies keeps the last decoded payload per path, so a test can assert
+	// what was actually asked for and not just that something was.
+	bodies map[string]map[string]any
 }
 
 func newGameSpy(t *testing.T) (*gameSpy, string) {
 	t.Helper()
-	spy := &gameSpy{}
+	spy := &gameSpy{bodies: map[string]map[string]any{}}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		spy.mu.Lock()
 		spy.calls = append(spy.calls, r.URL.Path)
+		if r.Body != nil {
+			var body map[string]any
+			if json.NewDecoder(r.Body).Decode(&body) == nil {
+				spy.bodies[r.URL.Path] = body
+			}
+		}
 		spy.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -63,6 +72,12 @@ func (g *gameSpy) count() int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return len(g.calls)
+}
+
+func (g *gameSpy) body(path string) map[string]any {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.bodies[path]
 }
 
 func newStore(t *testing.T) *store.Store {
