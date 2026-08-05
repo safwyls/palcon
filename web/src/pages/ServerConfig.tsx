@@ -10,6 +10,10 @@ import { cn } from "../lib/utils";
 import { Input } from "../components/ui/input";
 import { Switch } from "../components/ui/switch";
 
+/** The one empty settings list, so "no config loaded" keeps a stable
+ * identity across renders. See the note where it's used. */
+const NO_SETTINGS: ConfigSetting[] = [];
+
 /** Floats come off disk as "1.000000"; show the trimmed form everywhere so
  * the editor reads cleanly. The backend re-expands to %.6f on save, so the
  * baseline we compare against uses the same trimmed form. */
@@ -91,7 +95,12 @@ export function ServerConfig() {
     retry: false,
   });
 
-  const settings = configQuery.data?.settings ?? [];
+  // Hoisted rather than written inline: `?? []` mints a new array on every
+  // render, which changes `baseline`'s identity, which re-fires the effect
+  // below, which sets state and renders again — forever. That happens
+  // whenever the query has no data, including permanently on a server with
+  // no config path, where the request 400s and never retries.
+  const settings = configQuery.data?.settings ?? NO_SETTINGS;
   const baseline = useMemo(
     () => Object.fromEntries(settings.map((s) => [s.key, display(s)])),
     [settings],
