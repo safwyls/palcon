@@ -39,7 +39,7 @@ func TestServerResolvesToAGameClient(t *testing.T) {
 	if !ok {
 		t.Fatalf("no definition registered for %q", srv.Game)
 	}
-	if def.SteamAppID == 0 || !def.HasFeature(game.FeaturePals) {
+	if def.DefaultGamePort == 0 || !def.HasFeature(game.FeaturePals) {
 		t.Errorf("definition looks unpopulated: %+v", def)
 	}
 	if _, err := srv.Client(); err != nil {

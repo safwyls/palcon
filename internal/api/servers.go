@@ -197,8 +197,8 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toDTO(stored))
 }
 
-// serverSharingContainer names another enabled server row pointing at the
-// same container, if one exists. Nothing stops two rows naming one
+// serverSharingContainer names another server row pointing at the same
+// container, if one exists. Nothing stops two rows naming one
 // container — adopt doesn't check, and the edit form takes any name — so
 // destroying on behalf of one would silently unmake the other's server.
 func (s *Server) serverSharingContainer(ctx context.Context, srv *store.Server) (string, error) {
@@ -245,6 +245,13 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		srv = loaded
 	}
 
+	// Detached from the request, like the power handler's stop sequence:
+	// the provisioner stops the container (up to 30s of grace) before
+	// removing it, and a closed tab must not cancel that halfway and leave
+	// it stopped-but-present — nor cancel between the destroy and the row
+	// delete, splitting the two halves of one operation.
+	ctx := context.WithoutCancel(r.Context())
+
 	destroyed, dataDir := "", ""
 	if wantDestroy {
 		switch {
@@ -256,7 +263,14 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "no container name is recorded for this server")
 			return
 		}
-		if other, err := s.serverSharingContainer(r.Context(), srv); err == nil && other != "" {
+		other, err := s.serverSharingContainer(ctx, srv)
+		if err != nil {
+			// Failing open here would destroy a container this check exists
+			// to protect; not knowing is a reason to stop, not proceed.
+			writeError(w, http.StatusInternalServerError, "could not check whether another server uses this container")
+			return
+		}
+		if other != "" {
 			// Destroying it would pull the container out from under a server
 			// that is still registered and still expects it to be there.
 			writeError(w, http.StatusConflict,
@@ -264,11 +278,6 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 					other, srv.ContainerName))
 			return
 		}
-		// Detached from the request, like the power handler's stop sequence:
-		// the provisioner stops the container (up to 30s of grace) before
-		// removing it, and a closed tab must not cancel that halfway and
-		// leave it stopped-but-present.
-		ctx := context.WithoutCancel(r.Context())
 		res, err := s.Provisioner.Destroy(ctx, srv.ContainerName)
 		switch {
 		case err == nil:
@@ -291,7 +300,7 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := s.store.DeleteServer(r.Context(), srv.ID); err != nil {
+	if err := s.store.DeleteServer(ctx, srv.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete server")
 		return
 	}

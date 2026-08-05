@@ -12,28 +12,26 @@ import (
 const DefaultID = "palworld"
 
 // Definition is everything the shared layer needs to know about one game:
-// how to talk to it, how to install it, how to spell a player id, and which
-// dashboard views it can fill.
+// how to talk to it, how to spell a player id, and which dashboard views it
+// can fill.
 //
 // Keep this to what shared code actually consumes. Anything only one game's
 // own package uses belongs in that package, not here — a Definition field
-// with a single reader is a coupling with no payoff.
+// with a single reader is a coupling with no payoff, and one with no reader
+// is a promise nothing keeps. Facts that used to live here and lost their
+// readers moved to their consumers: the Steam app id is palworld.AppID (and
+// palagent's DefaultAppID, agreement test-enforced), and save staleness is
+// the savecache Source's Locate.
 type Definition struct {
 	// ID is the stable key stored on the servers row ("palworld", "ark").
 	ID string
 	// Name is the human label ("Palworld").
 	Name string
 
-	// SteamAppID is the dedicated server's Steam app id, used by the
-	// SteamCMD install/update/repair jobs. Zero for games not distributed
-	// through SteamCMD, which disables those jobs.
-	SteamAppID int
-
-	// Default ports for the new-server wizard and for repairing a row that
-	// arrived without one.
+	// DefaultGamePort repairs a row created or edited without a game port —
+	// see store's normalizeGamePort. (The provisioning wizard doesn't read
+	// it: provisioning is Palworld-only and says so in its own numbers.)
 	DefaultGamePort int
-	DefaultRCONPort int
-	DefaultRESTPort int
 
 	// NewClient builds an admin client for a server of this game.
 	NewClient func(Conn) Client
@@ -51,11 +49,6 @@ type Definition struct {
 	// offered — that is how a game without, say, a creature collection
 	// avoids shipping an empty Paldex tab.
 	Features []string
-
-	// SaveFile is the file inside a server's save directory whose mtime
-	// decides whether a cached world parse is stale. Empty for a game with
-	// no save reader.
-	SaveFile string
 }
 
 // Feature keys. These name dashboard views, not game concepts, so a second
@@ -158,15 +151,6 @@ func AllFeatures() []string {
 
 // HasFeature reports whether this game offers a view.
 func (d *Definition) HasFeature(feature string) bool { return contains(d.Features, feature) }
-
-// NewClientFor builds a client for a server of game id.
-func NewClientFor(id string, conn Conn) (Client, error) {
-	def, ok := Get(id)
-	if !ok {
-		return nil, &UnknownGameError{ID: id}
-	}
-	return def.NewClient(conn), nil
-}
 
 // UnknownGameError is a server row naming a game this build doesn't have —
 // a downgrade, or a row hand-edited into a typo.

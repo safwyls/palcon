@@ -13,20 +13,19 @@ import (
 	"github.com/safwyls/palcon/internal/game"
 )
 
-// AppID is the Steam app id of the Palworld dedicated server.
+// AppID is the Steam app id of the Palworld dedicated server. The agent
+// binary keeps its own copy (palagent.DefaultAppID) rather than linking the
+// dashboard's client machinery for one number — an agreement test keeps the
+// two from drifting.
 const AppID = 2394010
 
 // Definition registers Palworld with the shared layer.
 var Definition = &game.Definition{
 	ID:              game.DefaultID,
 	Name:            "Palworld",
-	SteamAppID:      AppID,
 	DefaultGamePort: 8211,
-	DefaultRESTPort: 8212,
-	DefaultRCONPort: 25575,
 	NewClient:       New,
 	CanonicalUID:    CanonicalUID,
-	SaveFile:        "Level.sav",
 	Features: []string{
 		game.FeatureMap, game.FeaturePals, game.FeatureInventory,
 		game.FeatureStorage, game.FeaturePaldex, game.FeatureAchievements,

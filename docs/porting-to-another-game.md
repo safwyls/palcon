@@ -10,6 +10,16 @@ game it is managing.
 This document is the contract: what a new game has to provide, and what it
 gets for free.
 
+A note on intent before the details: the expected way to reuse this work is
+a **sibling project that lifts or copies the generic packages** — `rcon`,
+`rcontest`, `savecache`, `steamcmd`, the generic halves of `palagent` and
+`agentctl` — not a second game registered inside this binary (Go's
+`internal/` rule means a separate module can't import them in place anyway).
+The registry below is deliberately frozen at what palcon itself consumes:
+feature gating, client construction, and game-port normalization. Resist
+growing `Definition` ahead of a reader — a field nothing consults is a
+promise nothing keeps.
+
 ## The dependency rule
 
 ```
@@ -68,12 +78,9 @@ One value describing the game, registered from an `init`:
 var Definition = &game.Definition{
     ID:              "ark",
     Name:            "ARK: Survival Ascended",
-    SteamAppID:      2430930,
     DefaultGamePort: 7777,
-    DefaultRCONPort: 27020,
     NewClient:       New,
     CanonicalUID:    CanonicalUID,
-    SaveFile:        "TheIsland_WP.ark",
     Features:        []string{game.FeatureMap, game.FeaturePals, ...},
 }
 
