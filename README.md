@@ -111,8 +111,13 @@ for the save-reading features.
 cp .env.example .env && export $(cat .env | xargs)
 go run ./cmd/palcon        # backend on :8080
 cd web && npm install && npm run dev   # frontend with hot reload
-go test ./...
+go test ./...              # backend tests
+cd web && npm test         # frontend tests (vitest; also test:watch, test:coverage)
 ```
+
+Go coverage is measured with `go test ./... -coverpkg=./...` — the flag counts
+code exercised by another package's tests, so plain per-package numbers read
+lower than the real figure.
 
 For a production-style single-binary run, `npm run build` in `web/` first so
 the Go binary embeds the fresh bundle. `docs/go-notes.md` is a Go reference

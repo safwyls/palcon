@@ -119,17 +119,21 @@ guarantee that everything else relies on.</p></div>
 
 <h2 id="scheduled-restarts">Scheduled restarts</h2>
 <p>Per-server restart schedules (weekdays + time) with in-game warning broadcasts at configurable
-lead times; the world is saved before every restart. With
-<a href="power-control.html">power control</a> configured the container is bounced; without it
-the game is asked to shut down and the container's restart policy brings it back.</p>
+lead times; the world is saved before every restart. The restart itself goes through whoever
+owns the game process — a <a href="palagent.html#supervisor">supervisor-mode agent</a> first,
+<a href="power-control.html">docker power control</a> as the fallback, exactly like the manual
+power buttons; without either, the game is asked to shut down and the container's restart
+policy brings it back.</p>
 
 <h2 id="watchdog">Crash watchdog</h2>
 <p>Optionally revives a container that exits with an error, with a cooldown and a three-strikes
 stand-down — a crash loop gets a human instead of a fourth restart. Clean stops are never
 revived.</p>
-<div class="callout warn"><p>Don't combine the watchdog (or a container name) with a
-<a href="palagent.html#supervisor">supervisor-mode agent</a> on the same server — the supervisor
-owns restarts, and a stale container name would race it.</p></div>
+<div class="callout note"><p>On a server with a
+<a href="palagent.html#supervisor">supervisor-mode agent</a> the watchdog stands down
+automatically: the supervisor already revives crashes with backoff, and the container never
+exits just because the game did, so the card reports the job as covered instead of offering a
+switch that would do nothing.</p></div>
 
 <h2 id="discord">Discord notifications</h2>
 <p>A per-server Discord webhook (encrypted at rest, never sent back to the browser) for server

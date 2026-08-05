@@ -122,8 +122,10 @@ and no <a href="power-control.html">docker proxy</a> needed for that server.</p>
   <li><b>Stop the old server.</b> Stop from the server card (the usual save-then-shutdown
     sequence runs), then stop and delete the old game container's app. <b>Keep the
     dataset.</b></li>
-  <li><b>Turn off the watchdog and clear the container name</b> on the server's edit form —
-    the supervisor owns restarts now, and a stale container name would race it.</li>
+  <li><b>Clear the container name</b> on the server's edit form — it names the old game
+    container, which stops existing in the next step, and docker-side features would point at a
+    ghost. (The watchdog needs no attention: on a supervised server it stands down
+    automatically, since the supervisor owns crash recovery.)</li>
   <li><b>Swap the stacks.</b> Remove the companion agent service from wherever it lives, and
     deploy a supervisor-mode stack for the server:
 <div class="code-card" data-copy>
@@ -159,9 +161,13 @@ and no <a href="power-control.html">docker proxy</a> needed for that server.</p>
     join.</li>
 </ol>
 
-<div class="callout warn"><p><b>Don't leave a watchdog or container name configured</b> on a
-supervised server (step 3). Both assume Docker owns the process; the supervisor does now, and
-they'll fight over restarts.</p></div>
+<div class="callout note"><p><b>A supervised server always answers to the agent first.</b>
+Power buttons, scheduled restarts and update jobs all ask the agent before considering docker,
+so a leftover container name can't fight the supervisor over restarts — it just leaves
+docker-side extras (container logs, the stale-name cleanup above) pointing at a container that
+no longer exists. Servers deployed by the provisioner record their container name on purpose:
+there it names the <i>supervisor's own</i> container, which powers the log viewer and the
+optional container destroy on removal.</p></div>
 
 <h2 id="rollback">Rollback</h2>
 <p>If anything misbehaves: stop the supervisor stack, redeploy the old game app and companion

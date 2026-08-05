@@ -182,14 +182,23 @@ covers the API surface and lifecycle details.</p>
 
 <h2 id="provisioner">One-click provisioning</h2>
 <p>Palcon itself never gains Docker create rights. The optional provisioner-mode agent
-(<code>PALAGENT_MODE=provisioner</code>) holds them instead, exposing a single locked verb:
-instantiate the Palworld supervisor template. The template lives in code — no arbitrary images,
+(<code>PALAGENT_MODE=provisioner</code>) holds them instead, exposing a few locked verbs:
+instantiate the Palworld supervisor template, discover and adopt existing agent containers,
+and destroy what it created. The template lives in code — no arbitrary images,
 mounts or privileges are expressible. With <code>PROVISIONER_URL</code>/<code>PROVISIONER_TOKEN</code>
 set, the wizard deploys new servers in one click and can discover and re-adopt existing agent
-containers on the host.</p>
+containers on the host, secrets recovered automatically.</p>
+<p>Destroy is create's inverse and the only verb that unmakes anything: it refuses any
+container the same provisioner didn't create, stops the game gracefully so the world flushes,
+and <b>never touches the data directory</b> — the world lives in a host bind mount and
+survives. In Palcon it's an explicit opt-in on the remove-server dialog; removing a server
+still defaults to dropping just the row. Reclaiming the disk afterwards is a deliberate trip
+to the host, on purpose.</p>
 <div class="callout danger"><p><b>Understand the risk before deploying the provisioner.</b> It
 holds the Docker socket as root, and a container holding the socket as root <i>is</i> root on the
-host. Its API is bounded by design, but bugs in that one handler and supply-chain compromise of
+host. Its API is bounded by design — a hostile caller with the token can stamp out template
+containers and destroy the ones the provisioner made, but can't touch other containers, delete
+world data, or reach host root — yet bugs in those few handlers and supply-chain compromise of
 this repo's image are real exposure. Never publish its port; reach it over the compose network
 only. If in doubt: keep it stopped and start it only while provisioning — Palcon degrades
 gracefully to the paste flow — or don't deploy it at all. The full
