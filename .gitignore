@@ -22,6 +22,8 @@ web/dist/*
 # Static demo build (CI builds it fresh for GitHub Pages)
 web/dist-demo/
 *.tsbuildinfo
+# vitest --coverage output, regenerated on every run
+web/coverage/
 
 # UI screenshots taken while developing (Claude's headless-browser passes
 # land here so they're viewable in the editor). Never committed.
