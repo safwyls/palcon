@@ -37,15 +37,7 @@ func (s *Server) containerFor(w http.ResponseWriter, srv *store.Server) (string,
 // agent, unreachable, companion mode) collapses to nil so callers fall
 // back to docker.
 func (s *Server) agentSupervisor(ctx context.Context, srv *store.Server) (*agentctl.Client, *agentctl.Health) {
-	client := s.agentFor(srv)
-	if client == nil {
-		return nil, nil
-	}
-	h, err := client.Health(ctx)
-	if err != nil || h.Mode != "supervisor" || h.Game == nil {
-		return nil, nil
-	}
-	return client, h
+	return agentctl.Supervisor(ctx, srv.AgentURL, srv.AgentToken)
 }
 
 // gameToContainerState maps the supervised game's status onto the shape
@@ -121,7 +113,7 @@ func (s *Server) prepareForStop(ctx context.Context, r *http.Request, container,
 // Generous on purpose: the countdown, the final save and the engine's
 // teardown all happen inside it, and overrunning it only costs the SIGTERM
 // that used to be sent immediately.
-const gameSelfExitWindow = 20 * time.Second
+const gameSelfExitWindow = agentctl.GameSelfExitWindow
 
 // ansiEscape strips terminal color codes some server images write into
 // their logs; the viewer renders plain text.

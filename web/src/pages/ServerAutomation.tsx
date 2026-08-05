@@ -489,7 +489,13 @@ function ScheduleDialog({
   );
 }
 
-function WatchdogCard({ serverId, config }: { serverId: number; config: { enabled: boolean; available: boolean } }) {
+function WatchdogCard({
+  serverId,
+  config,
+}: {
+  serverId: number;
+  config: { enabled: boolean; available: boolean; supervised?: boolean };
+}) {
   const queryClient = useQueryClient();
 
   const toggle = useMutation({
@@ -529,7 +535,9 @@ function WatchdogCard({ serverId, config }: { serverId: number; config: { enable
         </p>
         {!config.available && (
           <p className="text-xs text-ink/60">
-            Needs power control: a Docker endpoint on this Palcon instance and a container name on this server.
+            {config.supervised
+              ? "This server's agent already restarts the game when it crashes, with the same backoff — the container itself never exits, so there's nothing here to watch."
+              : "Needs power control: a Docker endpoint on this Palcon instance and a container name on this server."}
           </p>
         )}
       </div>

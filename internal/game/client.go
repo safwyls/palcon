@@ -1,10 +1,16 @@
 // Package game defines the contracts palcon needs from a dedicated game
 // server, with no knowledge of which game it is.
 //
-// Everything above this package — the HTTP API, the metrics collector, the
-// restart scheduler, the watchdog — is written against these types alone. A
-// game is added by implementing Client and registering a Definition (see
-// registry.go); nothing in the shared layer changes.
+// The moderation, power, metrics-collection, scheduling and watchdog paths
+// are written against these types alone: they never name a game, and a new
+// one reaches them by implementing Client and registering a Definition (see
+// registry.go) with nothing in that layer changing.
+//
+// The save-reading views are not there yet — internal/api still imports
+// games/palworld's save and config readers directly, and cmd/palcon wires
+// the Palworld save reader concretely. docs/porting-to-another-game.md
+// tracks what remains Palworld-shaped; this comment should not be read as
+// claiming more than that document does.
 //
 // The interface below is deliberately the *intersection* of what the
 // Source-derived dedicated-server population offers, because that intersection

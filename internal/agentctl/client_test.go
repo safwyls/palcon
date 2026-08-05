@@ -31,10 +31,15 @@ func newProvisioner(t *testing.T) (*agentctl.Client, string) {
 			io.WriteString(w, `{"Id":"cafe"}`)
 		case r.URL.Path == "/containers/json":
 			w.Header().Set("Content-Type", "application/json")
+			// palagent-main is provisioner-made; nginx is a bystander with
+			// neither the image nor the label, so it is invisible to
+			// discovery and refused by destroy.
 			io.WriteString(w, `[{"Id":"cafe","Names":["/palagent-main"],
 			  "Image":"ghcr.io/safwyls/palagent:latest","State":"running",
 			  "Labels":{"palcon.provisioned":"true","palcon.slug":"main"},
-			  "Ports":[{"PrivatePort":8811,"PublicPort":9811,"Type":"tcp"}]}]`)
+			  "Ports":[{"PrivatePort":8811,"PublicPort":9811,"Type":"tcp"}]},
+			 {"Id":"beef","Names":["/nginx"],"Image":"nginx:latest",
+			  "State":"running","Labels":{},"Ports":[]}]`)
 		case strings.HasSuffix(r.URL.Path, "/json"):
 			io.WriteString(w, `{"Config":{"Env":["PALAGENT_MODE=supervisor","PALAGENT_TOKEN=recovered-token","PALAGENT_ADMIN_PASSWORD=recovered-pw","PALAGENT_SERVER_NAME=Main"]}}`)
 		default:
@@ -124,9 +129,6 @@ func TestProvisionerRefusalsAreRejections(t *testing.T) {
 	client, _ := newProvisioner(t)
 	ctx := context.Background()
 
-	if _, err := client.Destroy(ctx, "no-such-container"); !errors.Is(err, agentctl.ErrRejected) {
-		t.Errorf("destroying a missing container: %v, want ErrRejected", err)
-	}
 	if _, err := client.Adopt(ctx, ""); !errors.Is(err, agentctl.ErrRejected) {
 		t.Errorf("adopting nothing: %v, want ErrRejected", err)
 	}
@@ -135,6 +137,36 @@ func TestProvisionerRefusalsAreRejections(t *testing.T) {
 		t.Errorf("provisioning a traversal slug: %v, want ErrRejected", err)
 	}
 }
+
+// "It isn't there" and "I refuse" need to be separable: a caller destroying
+// a container can treat the first as success and carry on, where folding
+// both into ErrRejected leaves it unable to tell a finished job from a
+// forbidden one — and stuck retrying forever.
+func TestMissingIsDistinctFromRefused(t *testing.T) {
+	client, _ := newProvisioner(t)
+	ctx := context.Background()
+
+	err := errFrom(client.Destroy(ctx, "no-such-container"))
+	if !errors.Is(err, agentctl.ErrNotFound) {
+		t.Errorf("destroying a missing container: %v, want ErrNotFound", err)
+	}
+	if errors.Is(err, agentctl.ErrRejected) {
+		t.Errorf("a missing container must not also read as a refusal: %v", err)
+	}
+
+	// The label gate's refusal stays a refusal — a container that exists
+	// but isn't ours must not be mistaken for "already gone" and allowed to
+	// proceed to the row delete.
+	err = errFrom(client.Destroy(ctx, "nginx"))
+	if !errors.Is(err, agentctl.ErrRejected) {
+		t.Errorf("destroying an unlabelled container: %v, want ErrRejected", err)
+	}
+	if errors.Is(err, agentctl.ErrNotFound) {
+		t.Errorf("a refused destroy must not read as already-gone: %v", err)
+	}
+}
+
+func errFrom[T any](_ T, err error) error { return err }
 
 // Power and the file verbs are supervisor-mode features. A companion agent
 // answers 400, which the client surfaces as a rejection so palcon can fall

@@ -82,13 +82,17 @@ func (c *Client) Discover(ctx context.Context) ([]DiscoveredServer, error) {
 // DestroyResult mirrors the provisioner's wire type.
 type DestroyResult = palagent.DestroyResult
 
-// Destroy asks the provisioner to remove a container it created. The
-// timeout covers the graceful stop it performs first, which waits out the
-// game's shutdown the same way a docker stop does.
+// Destroy asks the provisioner to remove a container it created.
+//
+// The budget has to clear the agent's own worst case with margin, per the
+// rule in dockerctl: a container list, then a stop that may use its full
+// 30s grace inside a 90s request, then a 60s remove. Aborting early would
+// report a gateway failure for a destroy the daemon goes on to complete,
+// leaving the row and the container disagreeing.
 func (c *Client) Destroy(ctx context.Context, container string) (*DestroyResult, error) {
 	var res DestroyResult
 	if err := c.do(ctx, http.MethodPost, "/v1/destroy",
-		map[string]string{"container": container}, &res, 2*time.Minute); err != nil {
+		map[string]string{"container": container}, &res, 3*time.Minute); err != nil {
 		return nil, err
 	}
 	return &res, nil

@@ -534,7 +534,9 @@ export interface AutomationResult {
   /** Absent for non-admins. */
   discord?: DiscordConfig;
   /** Absent for non-admins. `available` = docker control + container name. */
-  watchdog?: { enabled: boolean; available: boolean };
+  /** `supervised` means a palagent owns the game process, which is why
+   * `available` is false: its own supervisor already does this job. */
+  watchdog?: { enabled: boolean; available: boolean; supervised?: boolean };
   /** Absent for non-admins. Token is the /status/<token> URL segment. */
   publicStatus?: { enabled: boolean; token: string };
 }

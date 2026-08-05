@@ -248,6 +248,20 @@ func (s *Store) UpdateServer(ctx context.Context, srv *Server) error {
 		return err
 	}
 
+	// The game is a property of the stored row, not of the edit: the update
+	// contract carries no game field, so srv.Game arrives empty from every
+	// caller. Reading it back is what keeps a default game port resolving
+	// against the game the server actually runs — otherwise the moment a
+	// second game with a different default exists, saving the edit form with
+	// gamePort 0 would silently rewrite the port to Palworld's.
+	var storedGame string
+	if err := s.db.QueryRowContext(ctx, `SELECT game FROM servers WHERE id = ?`, srv.ID).Scan(&storedGame); err != nil {
+		if err == sql.ErrNoRows {
+			return ErrNotFound
+		}
+		return err
+	}
+
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE servers
 		SET name = ?, host = ?, rcon_port = ?, rcon_password_enc = ?,
@@ -256,7 +270,7 @@ func (s *Store) UpdateServer(ctx context.Context, srv *Server) error {
 		    agent_url = ?, agent_token_enc = ?, container_name = ?
 		WHERE id = ?`,
 		srv.Name, srv.Host, srv.RCONPort, rconEnc, srv.RESTPort, restEnc,
-		normalizeGamePort(srv.Game, srv.GamePort), strings.TrimSpace(srv.JoinAddress), boolToInt(srv.UseREST), boolToInt(srv.Enabled), srv.SavePath, srv.ConfigPath, srv.InstallPath,
+		normalizeGamePort(storedGame, srv.GamePort), strings.TrimSpace(srv.JoinAddress), boolToInt(srv.UseREST), boolToInt(srv.Enabled), srv.SavePath, srv.ConfigPath, srv.InstallPath,
 		srv.AgentURL, agentEnc, srv.ContainerName, srv.ID)
 	return err
 }

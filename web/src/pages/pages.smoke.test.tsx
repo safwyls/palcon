@@ -46,11 +46,23 @@ const overrides: Record<string, unknown> = {
   listBackups: { snapshots: [], intervalHours: 0, keep: 3, running: false },
   provisionDefaults: { available: false },
   provisionDiscover: { available: false, servers: [] },
-  serverPals: { players: [], saveModTime: null },
-  serverGuilds: { guilds: [] },
-  serverInventory: { players: [] },
-  serverStorage: { containers: [] },
-  serverAchievements: { players: [] },
+  // Shaped to the real DTOs, not to whatever a page happens to read. A stub
+  // missing a field the API contract guarantees makes the page look broken
+  // when it is the stub that lied — and worse, an over-narrow stub would
+  // let a genuine crash hide behind an expected one.
+  serverPals: { players: [], guilds: [], parsedAt: "", saveModTime: "" },
+  serverGuilds: { guilds: [], players: [], parsedAt: "", saveModTime: "" },
+  serverInventory: { players: [], parsedAt: "", saveModTime: "" },
+  serverStorage: {
+    containers: [],
+    bases: [],
+    guilds: [],
+    includesWorld: false,
+    includesPrivate: true,
+    parsedAt: "",
+    saveModTime: "",
+  },
+  serverAchievements: { players: [], parsedAt: "", saveModTime: "" },
   serverSettings: {},
   serverConfig: { settings: [], raw: "" },
   steamUpdateStatus: { running: false },
@@ -98,10 +110,11 @@ import { ServerPlayers } from "./ServerPlayers";
 import { ServerStorage } from "./ServerStorage";
 import { Users } from "./Users";
 
-/** Renders a page at a route that supplies the params it reads. */
+/** Renders a page at a route that supplies the params it reads, returning
+ * the query client so a test can wait for the data to actually arrive. */
 function renderAt(ui: ReactElement, pattern: string, path: string) {
   const client = makeQueryClient();
-  return render(
+  const rendered = render(
     <QueryClientProvider client={client}>
       <MemoryRouter
         initialEntries={[path]}
@@ -115,6 +128,7 @@ function renderAt(ui: ReactElement, pattern: string, path: string) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...rendered, client };
 }
 
 const SERVER_ROUTE = "/servers/:serverID";
@@ -139,19 +153,35 @@ const pages: [string, ReactElement, string, string][] = [
   ["ServerMap", <ServerMap />, SERVER_ROUTE, SERVER_PATH],
 ];
 
+/** React and testing-library warnings that say nothing about the page. */
+const BENIGN = [/not wrapped in act/i, /React Router Future Flag/i];
+
 describe("page smoke tests", () => {
+  let errors: string[];
+
   beforeEach(() => {
-    // A page that logs an error still "renders"; failing here makes the
-    // smoke test mean something.
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    // Captured rather than silenced: a page that renders a tree and logs a
+    // React error has not passed, and swallowing it here would hide exactly
+    // the failures these tests exist to catch.
+    errors = [];
+    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      const msg = args.map(String).join(" ");
+      if (!BENIGN.some((re) => re.test(msg))) errors.push(msg);
+    });
   });
 
   for (const [name, element, pattern, path] of pages) {
     it(`${name} renders without throwing`, async () => {
-      const { container } = renderAt(element, pattern, path);
-      // Let the initial queries settle so effects and derived renders run.
-      await waitFor(() => expect(container).toBeTruthy());
+      const { container, client } = renderAt(element, pattern, path);
+
+      // Wait for the data to actually arrive. Asserting on `container`
+      // (always truthy) resolved on the first tick and left every
+      // data-driven path unexercised — which is the half where the
+      // ServerConfig render loop lived.
+      await waitFor(() => expect(client.isFetching()).toBe(0));
+
       expect(container.innerHTML.length).toBeGreaterThan(0);
+      expect(errors, `${name} logged React errors`).toEqual([]);
     });
   }
 

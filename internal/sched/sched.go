@@ -34,34 +34,7 @@ const (
 	// planned restart. If the server is still down after this, the alert
 	// fires — at that point it's a real problem.
 	suppressFor = 10 * time.Minute
-	// gameSelfExitWindow mirrors the manual power flow's window of the same
-	// name: how long a supervised game that accepted an in-game shutdown is
-	// given to exit on its own before the agent signals it.
-	gameSelfExitWindow = 20 * time.Second
 )
-
-// agentSupervisor returns the server's agent iff it reports supervisor
-// mode — the signal that the agent, not docker, owns the game process.
-//
-// Deliberately the same shape as internal/api/power.go's helper of the same
-// name, including that any failure (no agent configured, unreachable,
-// companion mode) collapses to nil so the caller falls back to docker. The
-// two must agree: a server whose manual Restart button goes through the
-// agent and whose 5am scheduled restart goes through docker is a server
-// that behaves differently depending on who asked.
-func agentSupervisor(ctx context.Context, srv *store.Server) *agentctl.Client {
-	client, err := agentctl.New(srv.AgentURL, srv.AgentToken)
-	if err != nil {
-		return nil
-	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	h, err := client.Health(ctx)
-	if err != nil || h.Mode != "supervisor" || h.Game == nil {
-		return nil
-	}
-	return client
-}
 
 type Scheduler struct {
 	store    *store.Store
@@ -217,9 +190,16 @@ func (s *Scheduler) warn(ctx context.Context, srv *store.Server, minutes int) {
 		unit = "minute"
 	}
 	msg := fmt.Sprintf("Server restart in %d %s", minutes, unit)
+
+	// Discord first, and unconditionally: it needs no game client, and the
+	// restart it is warning about goes ahead even for a row naming a game
+	// this build doesn't register. Warning in-game and warning subscribers
+	// are separate promises, so one failing must not cancel the other.
+	s.notifier.RestartWarning(ctx, srv, minutes)
+
 	client, err := srv.Client()
 	if err != nil {
-		s.logger.Info("scheduler: cannot warn", "server", srv.ID, "error", err)
+		s.logger.Info("scheduler: cannot warn in game", "server", srv.ID, "error", err)
 		return
 	}
 	if err := client.Broadcast(ctx, msg); err != nil {
@@ -228,7 +208,6 @@ func (s *Scheduler) warn(ctx context.Context, srv *store.Server, minutes int) {
 	} else {
 		s.logger.Info("scheduler: restart warning broadcast", "server", srv.ID, "minutes", minutes)
 	}
-	s.notifier.RestartWarning(ctx, srv, minutes)
 }
 
 // restart mirrors the manual power flow (save → in-game shutdown → agent
@@ -270,7 +249,7 @@ func (s *Scheduler) restart(ctx context.Context, srv *store.Server, sc *store.Re
 	// began recording container names: a provisioned server now has both an
 	// agent and a container name, and only the agent is guaranteed to be
 	// looking at the same machine palcon's docker proxy is.
-	agent := agentSupervisor(ctx, srv)
+	agent, _ := agentctl.Supervisor(ctx, srv.AgentURL, srv.AgentToken)
 	useDocker := agent == nil && s.docker != nil && srv.ContainerName != ""
 
 	// When something is standing by to restart the server the moment the
@@ -301,7 +280,7 @@ func (s *Scheduler) restart(ctx context.Context, srv *store.Server, sc *store.Re
 		// first — but only when the shutdown was actually accepted.
 		graceful := time.Duration(0)
 		if shutdownOK {
-			graceful = gameSelfExitWindow
+			graceful = agentctl.GameSelfExitWindow
 		}
 		if _, err := agent.Power(ctx, "restart", graceful); err != nil {
 			s.logger.Error("scheduler: agent restart failed", "server", srv.ID, "error", err)

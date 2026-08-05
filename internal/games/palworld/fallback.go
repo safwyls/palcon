@@ -88,7 +88,7 @@ func (f *fallbackClient) Shutdown(ctx context.Context, waitSeconds int, message 
 
 // Settings and Metrics have no RCON equivalent, so there's nothing to fall
 // back to — these just forward to the REST primary. fallbackClient is only
-// ever constructed with a REST primary (see New in client.go), so this
+// ever constructed with a REST primary (see New in palworld.go), so this
 // type assertion always succeeds.
 func (f *fallbackClient) Settings(ctx context.Context) (map[string]any, error) {
 	return f.primary.(game.ExtendedClient).Settings(ctx)

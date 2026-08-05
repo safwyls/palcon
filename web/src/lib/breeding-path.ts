@@ -272,7 +272,13 @@ export function planRoutes<P extends PathPal>(owned: P[], targetId: string): Pla
       group = { list: [], best: [] };
       bucket.groups.set(cand.grp, group);
     }
-    if (group.list.length >= N_CRITERIA) {
+    // Gate on every criterion having a holder, not on the list being long:
+    // one entry routinely wins several crowns (the best talent sum usually
+    // also takes k=4/5/6), so after the first prune the list sits at 1–4 and
+    // a length test would never fire — sending nearly every candidate down
+    // the slow path this exists to avoid, and leaving non-champions in
+    // `list` for `membersOf` to walk as though they were champions.
+    if (group.best.length === N_CRITERIA) {
       let champion = false;
       for (let k = 0; k < N_CRITERIA && !champion; k++) champion = beats(cand, group.best[k], k);
       if (!champion) return;
@@ -285,10 +291,10 @@ export function planRoutes<P extends PathPal>(owned: P[], targetId: string): Pla
       for (let m = 1; m < group.list.length; m++) if (beats(group.list[m], best, k)) best = group.list[m];
       group.best[k] = best;
     }
-    if (group.list.length > N_CRITERIA) {
-      const keep = new Set(group.best);
-      group.list = group.list.filter((e) => keep.has(e));
-    }
+    // Prune after every re-crown, not only past a length threshold: the
+    // survivors are exactly the crown holders.
+    const keep = new Set(group.best);
+    if (group.list.length > keep.size) group.list = group.list.filter((e) => keep.has(e));
     bucket.dirty = true;
   };
 

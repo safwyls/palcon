@@ -32,13 +32,17 @@ export function DeleteServerDialog({
   // — so the option appears only when both halves are present. Asked for
   // when the dialog opens rather than on mount, since most sessions never
   // open it.
-  const { data: provisioner } = useQuery({
+  const { data: provisioner, isError: provisionerUnreachable } = useQuery({
     queryKey: ["provision-defaults"],
     queryFn: api.provisionDefaults,
     enabled: open,
     staleTime: 60_000,
   });
   const canDestroy = Boolean(provisioner?.available && server.containerName);
+  // Hiding the option on a failed lookup would leave an admin who opened
+  // this dialog *to* destroy the container quietly deleting the row and
+  // orphaning it. Say why it's missing instead.
+  const askedButUnreachable = provisionerUnreachable && Boolean(server.containerName);
 
   // A dialog reopened after a cancel must not still be armed.
   useEffect(() => {
@@ -70,6 +74,14 @@ export function DeleteServerDialog({
             This only removes it from Palcon — it does not affect the actual game server.
           </DialogDescription>
         </DialogHeader>
+
+        {askedButUnreachable && (
+          <p className="rounded-lg bg-muted/60 p-3 text-sm text-muted-foreground">
+            Couldn't reach the provisioner, so destroying{" "}
+            <span className="font-mono text-xs">{server.containerName}</span> isn't available right now. Removing
+            this server will leave the container running.
+          </p>
+        )}
 
         {canDestroy && (
           <div className="space-y-3 rounded-lg bg-muted/60 p-4">

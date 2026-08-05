@@ -32,11 +32,12 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Frontend build
+      - name: Frontend build & tests
         working-directory: web
         run: |
           npm ci
           npm run build
+          npm test
 
       - uses: actions/setup-go@v6
         with:

@@ -112,11 +112,19 @@ func (s *Server) handleGetAutomation(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		resp["discord"] = discord
+		// A supervised server's container runs palagent as PID 1, so it
+		// stays up whatever the game does — the watchdog would inspect it
+		// forever and never see the crash it exists to catch. The agent's
+		// own supervisor already restarts the game with backoff, so the
+		// honest answer is that the feature has nothing to add here rather
+		// than offering a switch that does nothing.
+		_, supervised := s.agentSupervisor(r.Context(), srv)
 		resp["watchdog"] = map[string]any{
 			"enabled": srv.Watchdog,
-			// Same precondition as scheduled container restarts: docker
-			// control plus a container name.
-			"available": s.docker != nil && srv.ContainerName != "",
+			// Otherwise the same precondition as scheduled container
+			// restarts: docker control plus a container name.
+			"available":  supervised == nil && s.docker != nil && srv.ContainerName != "",
+			"supervised": supervised != nil,
 		}
 		resp["publicStatus"] = map[string]any{
 			"enabled": srv.PublicToken != "",

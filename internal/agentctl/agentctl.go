@@ -29,6 +29,14 @@ var ErrRejected = errors.New("agent rejected the request")
 // ErrBusy is the agent's 409: a job is already running.
 var ErrBusy = errors.New("the agent is already running a job")
 
+// ErrNotFound is the agent's 404 — the thing asked about isn't there.
+//
+// Split out of ErrRejected because "it's already gone" and "I refuse" want
+// opposite handling: a caller destroying a container can treat the former
+// as success and carry on, where folding both into one sentinel leaves it
+// unable to tell a finished job from a forbidden one.
+var ErrNotFound = errors.New("the agent has no such thing")
+
 // Job and Health mirror the agent's wire types; the agent package owns
 // them so the two binaries can't drift.
 type (
@@ -105,7 +113,9 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, tim
 			return fmt.Errorf("%w: the agent rejected the token — re-check it on both sides", ErrRejected)
 		case http.StatusConflict:
 			return fmt.Errorf("%w: %s", ErrBusy, msg)
-		case http.StatusBadRequest, http.StatusNotFound:
+		case http.StatusNotFound:
+			return fmt.Errorf("%w: %s", ErrNotFound, msg)
+		case http.StatusBadRequest:
 			return fmt.Errorf("%w: %s", ErrRejected, msg)
 		}
 		return fmt.Errorf("agent returned %d: %s", resp.StatusCode, msg)
@@ -122,6 +132,34 @@ func (c *Client) Health(ctx context.Context) (*Health, error) {
 		return nil, err
 	}
 	return &h, nil
+}
+
+// GameSelfExitWindow is how long a supervised game that accepted an in-game
+// shutdown is given to exit on its own before the agent signals it. Shared
+// rather than redeclared per caller so the manual and scheduled power flows
+// can't drift apart.
+const GameSelfExitWindow = 20 * time.Second
+
+// Supervisor returns the agent and its health iff it reports supervisor
+// mode — the signal that the agent, not docker, owns the game process.
+// Every failure (none configured, unreachable, companion mode) collapses to
+// nil, so callers fall back to docker uniformly instead of each inventing
+// their own idea of "is there an agent here".
+//
+// One implementation on purpose. Palcon asks this question in at least
+// three places — the power handlers, the scheduler, and the SteamCMD gate —
+// and a server that answers differently depending on which one asked is
+// precisely the class of bug this exists to prevent.
+func Supervisor(ctx context.Context, agentURL, token string) (*Client, *Health) {
+	client, err := New(agentURL, token)
+	if err != nil {
+		return nil, nil
+	}
+	h, err := client.Health(ctx)
+	if err != nil || h.Mode != "supervisor" || h.Game == nil {
+		return nil, nil
+	}
+	return client, h
 }
 
 // ClearSteamCache empties the SteamCMD cache dirs next to the game server

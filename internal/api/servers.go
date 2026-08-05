@@ -1,12 +1,16 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/safwyls/palcon/internal/agentctl"
 	"github.com/safwyls/palcon/internal/store"
 )
 
@@ -193,6 +197,23 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toDTO(stored))
 }
 
+// serverSharingContainer names another enabled server row pointing at the
+// same container, if one exists. Nothing stops two rows naming one
+// container — adopt doesn't check, and the edit form takes any name — so
+// destroying on behalf of one would silently unmake the other's server.
+func (s *Server) serverSharingContainer(ctx context.Context, srv *store.Server) (string, error) {
+	servers, err := s.store.ListServers(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, other := range servers {
+		if other.ID != srv.ID && other.ContainerName == srv.ContainerName {
+			return other.Name, nil
+		}
+	}
+	return "", nil
+}
+
 // handleDeleteServer drops the server row and, with ?removeContainer=true,
 // asks the provisioner to destroy the container first.
 //
@@ -203,12 +224,29 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 // reach again through adoption — and the container name it needed to
 // destroy it lives on that row.
 func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
-	srv, ok := s.loadServer(w, r)
-	if !ok {
+	id, err := serverIDFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid server id")
 		return
 	}
+	wantDestroy := r.URL.Query().Get("removeContainer") == "true"
+
+	// A plain delete stays idempotent, the way it was before the destroy
+	// option existed: the store's DELETE succeeds on zero rows, so a retry
+	// or the loser of two concurrent deletes still gets 204 rather than a
+	// 404 that reads as failure to a script. Only the destroy path needs
+	// the row, for the container name on it.
+	srv := &store.Server{ID: id}
+	if wantDestroy {
+		loaded, ok := s.loadServer(w, r)
+		if !ok {
+			return
+		}
+		srv = loaded
+	}
+
 	destroyed, dataDir := "", ""
-	if r.URL.Query().Get("removeContainer") == "true" {
+	if wantDestroy {
 		switch {
 		case s.Provisioner == nil:
 			writeError(w, http.StatusBadRequest,
@@ -218,16 +256,40 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "no container name is recorded for this server")
 			return
 		}
-		res, err := s.Provisioner.Destroy(r.Context(), srv.ContainerName)
-		if err != nil {
+		if other, err := s.serverSharingContainer(r.Context(), srv); err == nil && other != "" {
+			// Destroying it would pull the container out from under a server
+			// that is still registered and still expects it to be there.
+			writeError(w, http.StatusConflict,
+				fmt.Sprintf("%q also uses container %s — remove that server first, or delete this one without destroying",
+					other, srv.ContainerName))
+			return
+		}
+		// Detached from the request, like the power handler's stop sequence:
+		// the provisioner stops the container (up to 30s of grace) before
+		// removing it, and a closed tab must not cancel that halfway and
+		// leave it stopped-but-present.
+		ctx := context.WithoutCancel(r.Context())
+		res, err := s.Provisioner.Destroy(ctx, srv.ContainerName)
+		switch {
+		case err == nil:
+			destroyed, dataDir = res.Container, res.DataDir
+			s.audit(r, srv.ID, "server-destroy", destroyed)
+			s.logger.Info("destroyed container", "server", srv.Name, "container", destroyed, "dataKept", dataDir)
+		case errors.Is(err, agentctl.ErrNotFound):
+			// Already gone — someone removed it by hand, or a previous
+			// attempt destroyed it and then failed to drop the row. The end
+			// state is the one that was asked for, so carry on and delete
+			// the row rather than trapping the operator in a retry that can
+			// never succeed.
+			s.logger.Info("container already gone; deleting the row",
+				"server", srv.Name, "container", srv.ContainerName)
+			s.audit(r, srv.ID, "server-destroy", srv.ContainerName+" (already gone)")
+		default:
 			s.logger.Error("destroy container failed",
 				"server", srv.Name, "container", srv.ContainerName, "error", err)
 			writeAgentError(w, err)
 			return
 		}
-		destroyed, dataDir = res.Container, res.DataDir
-		s.audit(r, srv.ID, "server-destroy", destroyed)
-		s.logger.Info("destroyed container", "server", srv.Name, "container", destroyed, "dataKept", dataDir)
 	}
 	if err := s.store.DeleteServer(r.Context(), srv.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete server")
