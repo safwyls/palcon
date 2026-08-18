@@ -1,3 +1,27 @@
+> [!IMPORTANT]
+> **Palcon has moved to [safwyls/artificer](https://github.com/safwyls/artificer).**
+> Development continues there, in a monorepo it shares with two sibling consoles
+> (wildskeeper for RuneScape Dragonwilds, flametender for Enshrouded) built on one
+> common framework. This repository is archived and kept for its history.
+>
+> **Nothing to do if you are running it.** The images keep the same names —
+> `ghcr.io/safwyls/palcon` and `ghcr.io/safwyls/palagent`, published from the new
+> repo since 2026-08-17 — so `:latest` keeps updating in place. Your database,
+> volumes, ports and environment are unchanged.
+>
+> One behaviour did change, and only if you provisioned servers from the console:
+> the agent's *provisioner* mode is retired in favour of
+> [Anvil](https://safwyls.github.io/artificer/docs/anvil.html), a one-per-host
+> service that places containers for all three consoles. Swap
+> `PROVISIONER_URL`/`PROVISIONER_TOKEN` for `ANVIL_URL`/`ANVIL_TOKEN`; the console
+> names the old variables at boot if it still finds them. Per-server sidecar
+> agents are unaffected.
+>
+> Issues and pull requests belong
+> [on artificer](https://github.com/safwyls/artificer/issues) now. Docs and demo:
+> <https://safwyls.github.io/artificer/>. The links below point at this repo's
+> own pages, which stay up as a historical copy.
+
 <div align="center">
 
 <img src="site/assets/favicon-192.png" width="92" alt="">
